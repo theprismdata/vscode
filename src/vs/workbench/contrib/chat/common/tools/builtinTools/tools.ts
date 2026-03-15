@@ -15,6 +15,10 @@ import { ResolveDebugEventDetailsTool, ResolveDebugEventDetailsToolData } from '
 import { ListDebugEventsTool, ListDebugEventsToolData } from './listDebugEventsTool.js';
 import { RunSubagentTool } from './runSubagentTool.js';
 import { TaskCompleteTool, TaskCompleteToolData } from './taskCompleteTool.js';
+import { IFileService } from '../../../../../../platform/files/common/files.js';
+import { IWorkspaceContextService } from '../../../../../../platform/workspace/common/workspace.js';
+import { IShellExecService } from '../../../../../../platform/shell/common/shellExec.js';
+import { registerIntelliCenTools } from './intellicen/registry.js';
 
 export class BuiltinToolsContribution extends Disposable implements IWorkbenchContribution {
 
@@ -23,6 +27,9 @@ export class BuiltinToolsContribution extends Disposable implements IWorkbenchCo
 	constructor(
 		@ILanguageModelToolsService toolsService: ILanguageModelToolsService,
 		@IInstantiationService instantiationService: IInstantiationService,
+		@IFileService fileService: IFileService,
+		@IWorkspaceContextService workspaceService: IWorkspaceContextService,
+		@IShellExecService shellExecService: IShellExecService,
 	) {
 		super();
 
@@ -56,6 +63,9 @@ export class BuiltinToolsContribution extends Disposable implements IWorkbenchCo
 		this._register(toolsService.registerTool(ListDebugEventsToolData, listDebugEventsTool));
 		this._register(toolsService.readToolSet.addTool(ListDebugEventsToolData));
 
+
+		// IntelliCen Studio tools (framework-based)
+		registerIntelliCenTools(this, toolsService, fileService, workspaceService, shellExecService);
 
 		const runSubagentTool = this._register(instantiationService.createInstance(RunSubagentTool));
 
