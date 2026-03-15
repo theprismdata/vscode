@@ -339,13 +339,18 @@ export class CodeApplication extends Disposable {
 
 		//#endregion
 
-		//#region Allow CORS for the PRSS CDN
+		//#region Allow CORS for the PRSS CDN and custom language model providers
 
 		// https://github.com/microsoft/vscode-remote-release/issues/9246
+		// Also allow CORS for user-configured custom language model provider endpoints (e.g. vLLM, OpenAI-compatible servers)
+		// so that the renderer's fetch can reach them without CORS errors.
 		session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-			if (details.url.startsWith('https://vscode.download.prss.microsoft.com/')) {
-				const responseHeaders = details.responseHeaders ?? Object.create(null);
+			const responseHeaders = details.responseHeaders ?? Object.create(null);
 
+			if (details.url.startsWith('https://vscode.download.prss.microsoft.com/') ||
+				(responseHeaders['Access-Control-Allow-Origin'] === undefined &&
+					!details.url.startsWith('vscode-file://') &&
+					!details.url.startsWith('vscode-app://'))) {
 				if (responseHeaders['Access-Control-Allow-Origin'] === undefined) {
 					responseHeaders['Access-Control-Allow-Origin'] = ['*'];
 					return callback({ cancel: false, responseHeaders });

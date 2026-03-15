@@ -17,7 +17,6 @@ import { EditorExtensions, IEditorFactoryRegistry, IEditorSerializer } from '../
 import { EditorInput } from '../../../../common/editor/editorInput.js';
 import { IEditorService, MODAL_GROUP } from '../../../../services/editor/common/editorService.js';
 import { ResourceContextKey } from '../../../../common/contextkeys.js';
-import { ChatContextKeys } from '../../common/actions/chatContextKeys.js';
 import { CONTEXT_MODELS_EDITOR, CONTEXT_MODELS_SEARCH_FOCUS, MANAGE_CHAT_COMMAND_ID } from '../../common/constants.js';
 import { CHAT_CATEGORY } from '../actions/chatActions.js';
 import { ChatManagementEditor, ModelsManagementEditor } from './chatManagementEditor.js';
@@ -30,14 +29,8 @@ import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase 
 
 const languageModelsOpenSettingsIcon = registerIcon('language-models-open-settings', Codicon.goToFile, localize('languageModelsOpenSettings', 'Icon for open language models settings commands.'));
 
-const LANGUAGE_MODELS_ENTITLEMENT_PRECONDITION = ContextKeyExpr.and(ChatContextKeys.enabled, ContextKeyExpr.or(
-	ChatContextKeys.Entitlement.planFree,
-	ChatContextKeys.Entitlement.planPro,
-	ChatContextKeys.Entitlement.planProPlus,
-	ChatContextKeys.Entitlement.planBusiness,
-	ChatContextKeys.Entitlement.planEnterprise,
-	ChatContextKeys.Entitlement.internal
-));
+// Always enabled — custom/offline providers do not require a Copilot account
+const LANGUAGE_MODELS_ENTITLEMENT_PRECONDITION = ContextKeyExpr.true();
 
 Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
 	EditorPaneDescriptor.create(

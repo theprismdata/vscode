@@ -5,6 +5,14 @@
 
 import { ChatAgentLocation, ChatModeKind } from '../../../common/constants.js';
 import { ILanguageModelChatMetadata, ILanguageModelChatMetadataAndIdentifier } from '../../../common/languageModels.js';
+import { ExtensionIdentifier } from '../../../../../../platform/extensions/common/extensions.js';
+
+/** Only models registered by our custom provider are shown in the picker. */
+const CUSTOM_LM_EXTENSION_ID = 'vscode.custom-language-models';
+
+function isCustomModel(entry: ILanguageModelChatMetadataAndIdentifier): boolean {
+	return ExtensionIdentifier.equals(entry.metadata?.extension, CUSTOM_LM_EXTENSION_ID);
+}
 
 /**
  * Describes the context needed for model selection decisions.
@@ -30,12 +38,14 @@ export function filterModelsForSession(
 ): ILanguageModelChatMetadataAndIdentifier[] {
 	if (sessionType && sessionType !== 'local' && hasModelsTargetingSession(models, sessionType)) {
 		return models.filter(entry =>
+			isCustomModel(entry) &&
 			entry.metadata?.targetChatSessionType === sessionType &&
 			entry.metadata?.isUserSelectable
 		);
 	}
 
 	return models.filter(entry =>
+		isCustomModel(entry) &&
 		!entry.metadata?.targetChatSessionType &&
 		entry.metadata?.isUserSelectable &&
 		isModelSupportedForMode(entry, currentModeKind) &&

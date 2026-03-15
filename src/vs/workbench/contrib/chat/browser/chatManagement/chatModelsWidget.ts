@@ -39,6 +39,8 @@ import { IContextKey, IContextKeyService } from '../../../../../platform/context
 import { CONTEXT_MODELS_SEARCH_FOCUS } from '../../common/constants.js';
 import { IDialogService } from '../../../../../platform/dialogs/common/dialogs.js';
 import Severity from '../../../../../base/common/severity.js';
+import { CancellationTokenSource } from '../../../../../base/common/cancellation.js';
+import { ICustomLanguageModelProviderService, CUSTOM_VENDORS } from '../customLanguageModelProviderContribution.js';
 
 const $ = DOM.$;
 
@@ -716,7 +718,8 @@ class ActionsColumnRenderer extends ModelsTableColumnRenderer<IActionsColumnTemp
 		@ILanguageModelsService private readonly languageModelsService: ILanguageModelsService,
 		@IDialogService private readonly dialogService: IDialogService,
 		@ICommandService private readonly commandService: ICommandService,
-		@IContextMenuService private readonly contextMenuService: IContextMenuService
+		@IContextMenuService private readonly contextMenuService: IContextMenuService,
+		@ICustomLanguageModelProviderService private readonly customLMProviderService: ICustomLanguageModelProviderService,
 	) {
 		super();
 	}
@@ -754,6 +757,33 @@ class ActionsColumnRenderer extends ModelsTableColumnRenderer<IActionsColumnTemp
 		const primaryActions: IAction[] = [];
 		const secondaryActions: IAction[] = [];
 		if (vendorEntry.vendor.configuration) {
+			// "Test Connection" action — only for custom vendors (openai / anthropic / vllm)
+			const isCustomVendor = (CUSTOM_VENDORS as readonly string[]).includes(vendorEntry.vendor.vendor);
+			if (isCustomVendor) {
+				secondaryActions.push(toAction({
+					id: 'testConnectionAction',
+					label: localize('models.testConnection', 'Test Connection'),
+					run: async () => {
+						const cts = new CancellationTokenSource();
+						try {
+							const result = await this.customLMProviderService.testConnection(vendorEntry.group, cts.token);
+							if (result.ok) {
+								await this.dialogService.info(
+									localize('models.testConnection.success', "Connection successful"),
+									localize('models.testConnection.successDetail', "Successfully connected to {0}.", vendorEntry.group.name)
+								);
+							} else {
+								await this.dialogService.warn(
+									localize('models.testConnection.failed', "Connection failed"),
+									result.message ?? localize('models.testConnection.failedDetail', "Could not connect to {0}.", vendorEntry.group.name)
+								);
+							}
+						} finally {
+							cts.dispose();
+						}
+					}
+				}));
+			}
 			secondaryActions.push(toAction({
 				id: 'configureAction',
 				label: localize('models.configure', 'Configure...'),
@@ -1277,6 +1307,7 @@ export class ChatModelsWidget extends Disposable {
 		const entitlement = this.chatEntitlementService.entitlement;
 		const isManagedEntitlement = entitlement === ChatEntitlement.Business || entitlement === ChatEntitlement.Enterprise;
 		const supportsAddingModels = this.chatEntitlementService.isInternal
+			|| configurableVendors.length > 0  // allow when custom/offline vendors are registered
 			|| (entitlement !== ChatEntitlement.Unknown
 				&& entitlement !== ChatEntitlement.Available
 				&& !isManagedEntitlement);

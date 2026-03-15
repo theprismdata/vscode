@@ -25,9 +25,10 @@ import { ITelemetryService } from '../../../../../../platform/telemetry/common/t
 import { TelemetryTrustedValue } from '../../../../../../platform/telemetry/common/telemetryUtils.js';
 import { MANAGE_CHAT_COMMAND_ID } from '../../../common/constants.js';
 import { IModelControlEntry, ILanguageModelChatMetadataAndIdentifier, ILanguageModelsService } from '../../../common/languageModels.js';
-import { ChatEntitlement, IChatEntitlementService, isProUser } from '../../../../../services/chat/common/chatEntitlementService.js';
+import { IChatEntitlementService, isProUser } from '../../../../../services/chat/common/chatEntitlementService.js';
 import * as semver from '../../../../../../base/common/semver/semver.js';
 import { IModelPickerDelegate } from './modelPickerActionItem.js';
+import { MY_PROVIDERS_CATEGORY_LABEL } from '../../customLanguageModelProviderContribution.js';
 import { IUpdateService, StateType } from '../../../../../../platform/update/common/update.js';
 
 function isVersionAtLeast(current: string, required: string): boolean {
@@ -59,6 +60,7 @@ function getUpdateHoverContent(updateState: StateType): MarkdownString {
  * Section identifiers for collapsible groups in the model picker.
  */
 const ModelPickerSection = {
+	MyProviders: 'myProviders',
 	Other: 'other',
 } as const;
 
@@ -111,13 +113,9 @@ function createModelAction(
 	};
 }
 
-function shouldShowManageModelsAction(chatEntitlementService: IChatEntitlementService): boolean {
-	return chatEntitlementService.entitlement === ChatEntitlement.Free ||
-		chatEntitlementService.entitlement === ChatEntitlement.Pro ||
-		chatEntitlementService.entitlement === ChatEntitlement.ProPlus ||
-		chatEntitlementService.entitlement === ChatEntitlement.Business ||
-		chatEntitlementService.entitlement === ChatEntitlement.Enterprise ||
-		chatEntitlementService.isInternal;
+function shouldShowManageModelsAction(_chatEntitlementService: IChatEntitlementService): boolean {
+	// Always show for offline / custom-provider workflows (no Copilot account required)
+	return true;
 }
 
 function createManageModelsAction(commandService: ICommandService): IActionWidgetDropdownAction {
@@ -304,7 +302,49 @@ export function buildModelPickerItems(
 				}
 			}
 
-			// --- 3. Other Models (collapsible) ---
+			// --- 3. My Providers (custom vendor models: openai / anthropic / vllm) ---
+			const myProviderModels = models.filter(m =>
+				!placed.has(m.identifier) &&
+				!placed.has(m.metadata.id) &&
+				m.metadata.modelPickerCategory?.label === MY_PROVIDERS_CATEGORY_LABEL
+			);
+			if (myProviderModels.length > 0) {
+				myProviderModels.sort((a, b) => {
+					const vendorCmp = a.metadata.vendor.localeCompare(b.metadata.vendor);
+					return vendorCmp !== 0 ? vendorCmp : a.metadata.name.localeCompare(b.metadata.name);
+				});
+
+				if (items.length > 0) {
+					items.push({ kind: ActionListItemKind.Separator });
+				}
+				items.push({
+					item: {
+						id: 'myProviders',
+						enabled: true,
+						checked: false,
+						class: undefined,
+						tooltip: localize('chat.modelPicker.myProviders', "My Providers"),
+						label: localize('chat.modelPicker.myProviders', "My Providers"),
+						run: () => { /* toggle handled by isSectionToggle */ }
+					},
+					kind: ActionListItemKind.Action,
+					label: localize('chat.modelPicker.myProviders', "My Providers"),
+					group: { title: '', icon: Codicon.chevronDown },
+					hideIcon: false,
+					section: ModelPickerSection.MyProviders,
+					isSectionToggle: true,
+				});
+				for (const model of myProviderModels) {
+					markPlaced(model.identifier, model.metadata.id);
+					items.push(createModelItem(
+						createModelAction(model, selectedModelId, onSelect, ModelPickerSection.MyProviders),
+						model,
+						hoverPosition,
+					));
+				}
+			}
+
+			// --- 4. Other Models (collapsible) ---
 			otherModels = models
 				.filter(m => !placed.has(m.identifier) && !placed.has(m.metadata.id))
 				.sort((a, b) => {
@@ -582,16 +622,13 @@ export class ModelPickerWidget extends Disposable {
 
 		const models = this._delegate.getModels();
 		const showFilter = models.length >= 10;
-		const isPro = isProUser(this._entitlementService.entitlement);
-		const manifest = this._languageModelsService.getModelsControlManifest();
-		const controlModelsForTier = isPro ? manifest.paid : manifest.free;
 		const canShowManageModelsAction = this._delegate.showManageModelsAction() && shouldShowManageModelsAction(this._entitlementService);
 		const manageModelsAction = canShowManageModelsAction ? createManageModelsAction(this._commandService) : undefined;
 		const items = buildModelPickerItems(
 			models,
 			this._selectedModel?.identifier,
 			this._languageModelsService.getRecentlyUsedModelIds(),
-			controlModelsForTier,
+			{},
 			this._productService.version,
 			this._updateService.state.type,
 			onSelect,

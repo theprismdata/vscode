@@ -6,6 +6,7 @@
 import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../../../base/common/actions.js';
 import { raceTimeout, timeout } from '../../../../../base/common/async.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
+import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { toErrorMessage } from '../../../../../base/common/errorMessage.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
@@ -31,8 +32,10 @@ import { ChatRequestAgentPart, ChatRequestToolPart } from '../../common/requestP
 import { IChatProgress, IChatService } from '../../common/chatService/chatService.js';
 import { IChatRequestToolEntry } from '../../common/attachments/chatVariableEntries.js';
 import { ChatAgentLocation, ChatConfiguration, ChatModeKind } from '../../common/constants.js';
-import { ILanguageModelsService } from '../../common/languageModels.js';
+import { ChatMessageRole, IChatMessage, ILanguageModelsService } from '../../common/languageModels.js';
+import { ILanguageModelsConfigurationService } from '../../common/languageModelsConfiguration.js';
 import { CHAT_OPEN_ACTION_ID, CHAT_SETUP_ACTION_ID } from '../actions/chatActions.js';
+import { toolDataToOpenAI, estimateTokenCount, IOpenAITool } from '../adapters/openAIAdapter.js';
 import { ChatViewId, IChatWidgetService } from '../chat.js';
 import { IViewsService } from '../../../../services/views/common/viewsService.js';
 import { ChatViewPane } from '../widgetHosts/viewPane/chatViewPane.js';
@@ -55,6 +58,7 @@ import { IDefaultAccountService } from '../../../../../platform/defaultAccount/c
 import { IHostService } from '../../../../services/host/browser/host.js';
 import { IOutputService } from '../../../../services/output/common/output.js';
 import { IExtensionsWorkbenchService } from '../../../extensions/common/extensions.js';
+import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
 
 const defaultChat = {
 	extensionId: product.defaultChatAgent?.extensionId ?? '',
@@ -245,16 +249,78 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 		return this.instantiationService.invokeFunction(async accessor /* using accessor for lazy loading */ => {
 			const chatService = accessor.get(IChatService);
 			const languageModelsService = accessor.get(ILanguageModelsService);
+			const languageModelsConfigurationService = accessor.get(ILanguageModelsConfigurationService);
 			const chatWidgetService = accessor.get(IChatWidgetService);
 			const chatAgentService = accessor.get(IChatAgentService);
 			const languageModelToolsService = accessor.get(ILanguageModelToolsService);
 			const defaultAccountService = accessor.get(IDefaultAccountService);
 
-			return this.doInvoke(request, part => progress([part]), chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService, defaultAccountService);
+			return this.doInvoke(request, part => progress([part]), chatService, languageModelsService, languageModelsConfigurationService, chatWidgetService, chatAgentService, languageModelToolsService, defaultAccountService);
 		});
 	}
 
-	private async doInvoke(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService, defaultAccountService: IDefaultAccountService): Promise<IChatAgentResult> {
+	private async doInvoke(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, languageModelsConfigurationService: ILanguageModelsConfigurationService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService, defaultAccountService: IDefaultAccountService): Promise<IChatAgentResult> {
+		// If the user explicitly selected a custom (non-Copilot) provider model, skip the Copilot
+		// setup/sign-in flow entirely and go straight to inference.
+		if (request.userSelectedModelId) {
+			const modelMetadata = languageModelsService.lookupLanguageModel(request.userSelectedModelId);
+			if (modelMetadata && ExtensionIdentifier.equals(modelMetadata.extension, 'vscode.custom-language-models')) {
+				return this.doInvokeWithoutSetup(request, progress, chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService);
+			}
+		}
+
+		// If no model is selected yet, try to find a custom model in the cache.
+		// This handles the startup race where the widget initializes before models resolve.
+		if (!request.userSelectedModelId) {
+			const customModelId = languageModelsService.getLanguageModelIds().find(id => {
+				const m = languageModelsService.lookupLanguageModel(id);
+				return m && ExtensionIdentifier.equals(m.extension, 'vscode.custom-language-models') && m.isUserSelectable;
+			});
+			if (customModelId) {
+				return this.doInvokeWithoutSetup(
+					{ ...request, userSelectedModelId: customModelId },
+					progress, chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService
+				);
+			}
+		}
+
+		// If custom provider groups are configured but models haven't resolved into the cache yet,
+		// wait up to 8 seconds for the onDidChangeLanguageModels event before falling back.
+		const configuredGroups = languageModelsConfigurationService.getLanguageModelsProviderGroups();
+		if (configuredGroups.length > 0) {
+			this.logService.warn(`[CustomLM] doInvoke: custom provider groups configured (${configuredGroups.length}), waiting for models to resolve...`);
+			progress({
+				kind: 'progressMessage',
+				content: new MarkdownString(localize('customLMLoading', "Loading language models...")),
+				shimmer: true,
+			});
+			const resolvedId = await new Promise<string | undefined>(resolve => {
+				const check = () => languageModelsService.getLanguageModelIds().find(id => {
+					const m = languageModelsService.lookupLanguageModel(id);
+					return m && ExtensionIdentifier.equals(m.extension, 'vscode.custom-language-models') && m.isUserSelectable;
+				});
+				const immediate = check();
+				if (immediate) { resolve(immediate); return; }
+				const disposable = languageModelsService.onDidChangeLanguageModels(() => {
+					const id = check();
+					if (id) { disposable.dispose(); resolve(id); }
+				});
+				timeout(8000).then(() => { disposable.dispose(); resolve(undefined); });
+			});
+			if (resolvedId) {
+				return this.doInvokeWithoutSetup(
+					{ ...request, userSelectedModelId: resolvedId },
+					progress, chatService, languageModelsService, chatWidgetService, chatAgentService, languageModelToolsService
+				);
+			}
+			// Models never resolved — show a clear error instead of a sign-in dialog
+			progress({
+				kind: 'warning',
+				content: new MarkdownString(localize('customLMTimeout', "Language models did not load in time. Check your provider settings and try again.")),
+			});
+			return {};
+		}
+
 		if (
 			!this.context.state.installed ||									// Extension not installed: run setup to install
 			this.context.state.disabled ||										// Extension disabled: run setup to enable
@@ -272,10 +338,189 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 	}
 
 	private async doInvokeWithoutSetup(request: IChatAgentRequest, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatWidgetService: IChatWidgetService, chatAgentService: IChatAgentService, languageModelToolsService: ILanguageModelToolsService): Promise<IChatAgentResult> {
-		const requestModel = chatWidgetService.getWidgetBySessionResource(request.sessionResource)?.viewModel?.model.getRequests().at(-1);
+		const widget = chatWidgetService.getWidgetBySessionResource(request.sessionResource);
+		const requestModel = widget?.viewModel?.model.getRequests().at(-1);
 		if (!requestModel) {
 			this.logService.error('[chat setup] Request model not found, cannot redispatch request.');
 			return {}; // this should not happen
+		}
+
+		// If the user selected a custom (non-Copilot) language model, stream directly from
+		// the language model service. The SetupAgent's "forwarding" mechanism waits for a
+		// non-core GitHub Copilot agent to register, which never happens without Copilot.
+		// Going through chatService.resendRequest would also loop back to SetupAgent.
+		if (request.userSelectedModelId) {
+			const modelMetadata = languageModelsService.lookupLanguageModel(request.userSelectedModelId);
+			if (modelMetadata && ExtensionIdentifier.equals(modelMetadata.extension, 'vscode.custom-language-models')) {
+				// Build conversation history with system context
+				const messages: IChatMessage[] = [];
+
+				// System prompt with workspace info and tool instructions
+				const workspaceFolders = this.instantiationService.invokeFunction(accessor =>
+					accessor.get(IWorkspaceContextService).getWorkspace().folders
+				);
+				let workspacePath = workspaceFolders.length > 0 ? workspaceFolders[0].uri.fsPath : '';
+				if (!workspacePath) {
+					try { workspacePath = process.cwd(); } catch { /* ignore */ }
+				}
+				const systemPrompt = [
+					'You are IntelliCen Studio, an AI coding assistant integrated into the IDE.',
+					workspacePath ? `WORKSPACE ROOT: ${workspacePath}` : '',
+					'',
+					'IMPORTANT RULES:',
+					'1. You MUST use the provided tools to read files, list directories, and run commands.',
+					'2. NEVER say "I cannot access files" — you CAN via tools.',
+					workspacePath ? `3. For relative file paths, prepend the workspace root. Example: "product.json" → "${workspacePath}/product.json"` : '',
+					workspacePath ? `4. To read "product.json", call intellicen_readFile with path="${workspacePath}/product.json"` : '',
+					'5. To list project files, call intellicen_listDirectory with path="."',
+					'6. To run shell commands, call intellicen_runTerminalCommand.',
+				].filter(Boolean).join('\n');
+				messages.push({ role: ChatMessageRole.System, content: [{ type: 'text', value: systemPrompt }] });
+
+				const allRequests = widget?.viewModel?.model.getRequests() ?? [];
+				for (const req of allRequests) {
+					if (req === requestModel) {
+						break;
+					}
+					messages.push({ role: ChatMessageRole.User, content: [{ type: 'text', value: req.message.text }] });
+					if (req.response) {
+						const responseText = req.response.response.getMarkdown();
+						if (responseText) {
+							messages.push({ role: ChatMessageRole.Assistant, content: [{ type: 'text', value: responseText }] });
+						}
+					}
+				}
+				messages.push({ role: ChatMessageRole.User, content: [{ type: 'text', value: request.message }] });
+
+				// Gather available tools — only include IntelliCen workspace tools
+				const availableTools = languageModelToolsService.getTools(modelMetadata);
+				const openAITools: IOpenAITool[] = [];
+				for (const tool of availableTools) {
+					if (tool.id.startsWith('intellicen_')) {
+						openAITools.push(toolDataToOpenAI(tool));
+					}
+				}
+				console.log(`[CustomLM] Tools available: ${openAITools.length}`, openAITools.map(t => t.function.name));
+
+				const MAX_TOOL_ITERATIONS = 15;
+				try {
+					for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
+						const requestOptions: { [name: string]: unknown } = {};
+						if (openAITools.length > 0) {
+							requestOptions['tools'] = openAITools;
+						}
+
+						const response = await languageModelsService.sendChatRequest(
+							request.userSelectedModelId,
+							undefined,
+							messages,
+							requestOptions,
+							CancellationToken.None
+						);
+
+						const textParts: string[] = [];
+						const toolUseParts: Array<{ type: 'tool_use'; name: string; toolCallId: string; parameters: Record<string, unknown> }> = [];
+
+						for await (const part of response.stream) {
+							const streamParts = Array.isArray(part) ? part : [part];
+							for (const p of streamParts) {
+								if (p.type === 'text' && p.value) {
+									textParts.push(p.value);
+								} else if (p.type === 'tool_use') {
+									toolUseParts.push(p);
+								}
+							}
+						}
+						await response.result;
+
+						console.log(`[CustomLM] Iteration ${iteration}: textParts=${textParts.length}, toolUseParts=${toolUseParts.length}`, toolUseParts.map(t => t.name));
+						// No tool calls → output text and finish
+						if (toolUseParts.length === 0) {
+							for (const text of textParts) {
+								progress({ kind: 'markdownContent', content: new MarkdownString(text) });
+							}
+							break;
+						}
+
+						// Add assistant message with tool_use to conversation
+						const assistantContent: IChatMessage['content'] = [];
+						if (textParts.length > 0) {
+							assistantContent.push({ type: 'text', value: textParts.join('') });
+						}
+						for (const tu of toolUseParts) {
+							assistantContent.push({ type: 'tool_use', name: tu.name, toolCallId: tu.toolCallId, parameters: tu.parameters });
+						}
+						messages.push({ role: ChatMessageRole.Assistant, content: assistantContent });
+
+						// Execute each tool (only if it's in our allowed list)
+						const allowedToolIds = new Set(openAITools.map(t => t.function.name));
+						for (const toolUse of toolUseParts) {
+							// Skip hallucinated tool names
+							if (!allowedToolIds.has(toolUse.name) && !allowedToolIds.has(toolUse.name.replace(/[^a-zA-Z0-9_-]/g, '_'))) {
+								this.logService.warn(`[CustomLM] Skipping unknown tool: ${toolUse.name}`);
+								messages.push({
+									role: ChatMessageRole.User,
+									content: [{
+										type: 'tool_result',
+										toolCallId: toolUse.toolCallId,
+										value: [{ type: 'text', value: `Error: tool "${toolUse.name}" is not available. Available tools: ${Array.from(allowedToolIds).join(', ')}` }],
+										isError: true,
+									}],
+								});
+								continue;
+							}
+							progress({
+								kind: 'progressMessage',
+								content: new MarkdownString(localize('toolInvocation', "Running tool: {0}", toolUse.name)),
+								shimmer: true,
+							});
+
+							const countTokens: CountTokensCallback = async (input: string) => estimateTokenCount(input);
+							try {
+								const toolResult = await languageModelToolsService.invokeTool({
+									callId: toolUse.toolCallId,
+									toolId: toolUse.name,
+									parameters: toolUse.parameters,
+									context: undefined,
+								}, countTokens, CancellationToken.None);
+
+								const resultText = toolResult.content
+									.map(c => c.kind === 'text' ? c.value : '')
+									.join('');
+
+								messages.push({
+									role: ChatMessageRole.User,
+									content: [{
+										type: 'tool_result',
+										toolCallId: toolUse.toolCallId,
+										value: [{ type: 'text', value: resultText || '(no output)' }],
+										isError: !!toolResult.toolResultError,
+									}],
+								});
+							} catch (toolErr) {
+								this.logService.error(`[CustomLM] Tool ${toolUse.name} failed`, toolErr);
+								messages.push({
+									role: ChatMessageRole.User,
+									content: [{
+										type: 'tool_result',
+										toolCallId: toolUse.toolCallId,
+										value: [{ type: 'text', value: `Error: ${toolErr instanceof Error ? toolErr.message : String(toolErr)}` }],
+										isError: true,
+									}],
+								});
+							}
+						}
+						// Loop continues → send tool results back to the model
+					}
+				} catch (err) {
+					this.logService.error('[CustomLM] Error invoking custom language model', err);
+					progress({
+						kind: 'warning',
+						content: new MarkdownString(localize('customLMError', "Failed to get a response from the custom language model. Please check your provider settings."))
+					});
+				}
+				return {};
+			}
 		}
 
 		progress({

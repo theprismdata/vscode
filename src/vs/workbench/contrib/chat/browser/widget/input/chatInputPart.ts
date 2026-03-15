@@ -753,9 +753,14 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 						this._waitForPersistedLanguageModel.clear();
 
 						const lateModel = { metadata: persistedModel, identifier: persistedSelection };
-						if (shouldRestoreLateArrivingModel(persistedSelection, persistedAsDefault, lateModel, this.location)) {
+						const isInFilteredList = this.getModels().some(m => m.identifier === persistedSelection);
+						if (isInFilteredList && shouldRestoreLateArrivingModel(persistedSelection, persistedAsDefault, lateModel, this.location)) {
 							this.setCurrentLanguageModel(lateModel);
 							this.checkModelSupported();
+						} else {
+							// Model exists in cache but is not in the filtered selectable list
+							// (e.g. a Copilot model that has since been filtered out).
+							this.setCurrentLanguageModelToDefault();
 						}
 					} else {
 						this.setCurrentLanguageModelToDefault();
@@ -2988,8 +2993,8 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const { files, added, removed, shouldShowEditingSession } = topLevelStats.read(reader);
 
 			const buttonLabel = files === 1
-				? localize('chatEditingSession.oneFile', '1 file changed')
-				: localize('chatEditingSession.manyFiles', '{0} files changed', files);
+				? localize('chatEditingSession.oneFile', '1 File')
+				: localize('chatEditingSession.manyFiles', '{0} Files', files);
 
 			button.label = buttonLabel;
 			button.element.setAttribute('aria-label', localize('chatEditingSession.ariaLabelWithCounts', '{0}, {1} lines added, {2} lines removed', buttonLabel, added, removed));

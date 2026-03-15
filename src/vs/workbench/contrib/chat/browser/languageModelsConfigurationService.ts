@@ -315,24 +315,44 @@ export class ChatLanguageModelsDataContribution extends Disposable implements IW
 	private updateSchema(registry: IJSONContributionRegistry): void {
 		const vendors = this.languageModelsService.getVendors();
 
+		// Cursor Style UI - Add custom vendors for menu-based registration
+		const customVendors = ['openai', 'anthropic', 'vllm'];
+		const allVendorNames = Array.from(new Set([...vendors.map(v => v.vendor), ...customVendors]));
+
+		const customConfigurationSchema: IJSONSchema = {
+			type: 'object',
+			required: ['baseUrl', 'models'],
+			properties: {
+				displayName: { type: 'string', description: 'Display name shown in the model picker' },
+				baseUrl: { type: 'string', description: 'Base URL for the API endpoint (e.g. https://api.openai.com/v1)' },
+				apiKey: { type: 'string', secret: true, description: 'API key for authentication (stored securely)' } as IJSONSchema,
+				defaultModel: { type: 'string', description: 'Default model to use when none is specified' },
+				models: { type: 'array', items: { type: 'string' }, description: 'List of model IDs available from this provider' },
+				endpointVersion: { type: 'string', enum: ['v1', 'v3'], default: 'v3', description: 'API endpoint version (v3 recommended for vLLM)' }
+			}
+		};
+
 		const schema: IJSONSchema = {
 			type: 'array',
 			items: {
 				properties: {
 					vendor: {
 						type: 'string',
-						enum: vendors.map(v => v.vendor)
+						enum: allVendorNames
 					},
 					name: { type: 'string' }
 				},
-				allOf: vendors.map(vendor => ({
-					if: {
-						properties: {
-							vendor: { const: vendor.vendor }
-						}
-					},
-					then: vendor.configuration
-				})),
+				allOf: allVendorNames.map(vendorName => {
+					const vendor = vendors.find(v => v.vendor === vendorName);
+					return {
+						if: {
+							properties: {
+								vendor: { const: vendorName }
+							}
+						},
+						then: vendor?.configuration || customConfigurationSchema
+					};
+				}),
 				required: ['vendor', 'name']
 			}
 		};

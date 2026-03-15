@@ -982,7 +982,9 @@ export class LanguageModelsService implements ILanguageModelsService {
 
 			if (vendor.configuration && this.requireConfiguring(vendor.configuration)) {
 				const snippet = this.getSnippetForFirstUnconfiguredProperty(configuration ?? {}, vendor.configuration);
-				await this._languageModelsConfigurationService.configureLanguageModels({ group: saved, snippet });
+				if (snippet) {
+					await this._languageModelsConfigurationService.configureLanguageModels({ group: saved, snippet });
+				}
 			}
 		} catch (error) {
 			if (isCancellationError(error)) {

@@ -118,6 +118,9 @@ import { getOSReleaseInfo } from '../../../base/node/osReleaseInfo.js';
 import { getDesktopEnvironment } from '../../../base/common/desktopEnvironmentInfo.js';
 import { getCodeDisplayProtocol, getDisplayProtocol } from '../../../base/node/osDisplayProtocolInfo.js';
 import { RequestService } from '../../../platform/request/electron-utility/requestService.js';
+import { RequestChannel } from '../../../platform/request/common/requestIpc.js';
+import { ShellExecService } from '../../../platform/shell/node/shellExecService.js';
+import { ShellExecChannel } from '../../../platform/shell/common/shellExecIpc.js';
 import { DefaultExtensionsInitializer } from './contrib/defaultExtensionsInitializer.js';
 import { AllowedExtensionsService } from '../../../platform/extensionManagement/common/allowedExtensionsService.js';
 import { IExtensionGalleryManifestService } from '../../../platform/extensionManagement/common/extensionGalleryManifest.js';
@@ -406,6 +409,13 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 	}
 
 	private initChannels(accessor: ServicesAccessor): void {
+
+		// Request Service — exposed so the renderer can make HTTP requests via the shared process
+		// instead of browser fetch (which is blocked for cross-origin requests from vscode-file://)
+		this.server.registerChannel('request', new RequestChannel(accessor.get(IRequestService)));
+
+		// Shell Exec Service — allows renderer to execute shell commands via shared process
+		this.server.registerChannel('shellExec', new ShellExecChannel(new ShellExecService()));
 
 		// Extensions Management
 		const channel = new ExtensionManagementChannel(accessor.get(IExtensionManagementService), () => null);

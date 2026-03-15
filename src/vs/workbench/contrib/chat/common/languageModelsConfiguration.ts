@@ -38,4 +38,19 @@ export interface ILanguageModelsProviderGroup extends IStringDictionary<unknown>
 	readonly name: string;
 	readonly vendor: string;
 	readonly range?: IRange;
+
+	// Cursor Style UI - Custom Provider Fields
+	readonly id?: string;
+	readonly displayName?: string;
+	readonly baseUrl?: string;
+	/** API key - stored as a secret reference (decoded at runtime via Secret Storage). */
+	readonly apiKey?: string;
+	readonly defaultModel?: string;
+	readonly models?: string[];
+	/**
+	 * 엔드포인트 버전 (기본값: 'v3')
+	 * vLLM 연동 시 endpoint가 v1과 v3가 다른 경우가 있습니다.
+	 * 현재 버전 기준은 v3이므로, LLM API 호출 시 v3 엔드포인트 규격을 준수해야 합니다.
+	 */
+	readonly endpointVersion?: 'v1' | 'v3';
 }

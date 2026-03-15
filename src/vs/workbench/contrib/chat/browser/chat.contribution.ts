@@ -125,6 +125,7 @@ import { ChatEditor, IChatEditorOptions } from './widgetHosts/editor/chatEditor.
 import { ChatEditorInput, ChatEditorInputSerializer } from './widgetHosts/editor/chatEditorInput.js';
 import { ChatLayoutService } from './widget/chatLayoutService.js';
 import { ChatLanguageModelsDataContribution, LanguageModelsConfigurationService } from './languageModelsConfigurationService.js';
+import './customLanguageModelProviderContribution.js';
 import './chatManagement/chatManagement.contribution.js';
 import './aiCustomization/aiCustomizationWorkspaceService.js';
 import './aiCustomization/aiCustomizationManagement.contribution.js';
