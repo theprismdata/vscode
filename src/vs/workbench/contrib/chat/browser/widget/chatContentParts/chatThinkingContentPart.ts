@@ -180,6 +180,7 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 	private titleShimmerSpan: HTMLElement | undefined;
 	private titleDetailContainer: HTMLElement | undefined;
 	private titleDetailRendered: IRenderedMarkdown | undefined;
+	private readonly _startTime: number = Date.now();
 
 	private getRandomWorkingMessage(category: WorkingMessageCategory = WorkingMessageCategory.Tool): string {
 		let pool = this.availableMessagesByCategory.get(category);
@@ -791,7 +792,7 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 
 		if (this.content.generatedTitle) {
 			this.currentTitle = this.content.generatedTitle;
-			this.setFinalizedTitle(this.content.generatedTitle);
+			this.setFinalizedTitle(this.getElapsedTimeLabel());
 			return;
 		}
 
@@ -801,7 +802,7 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 			this.currentTitle = existingTitle;
 			this.content.generatedTitle = existingTitle;
 			this.setGeneratedTitleOnAllParts(existingTitle);
-			this.setFinalizedTitle(existingTitle);
+			this.setFinalizedTitle(this.getElapsedTimeLabel());
 			return;
 		}
 
@@ -837,7 +838,7 @@ export class ChatThinkingContentPart extends ChatCollapsibleContentPart implemen
 			this.currentTitle = title;
 			this.content.generatedTitle = title;
 			this.setGeneratedTitleOnAllParts(title);
-			this.setFinalizedTitle(title);
+			this.setFinalizedTitle(this.getElapsedTimeLabel());
 			return;
 		}
 
@@ -1013,7 +1014,7 @@ ${this.hookCount > 0 ? `EXAMPLES WITH BLOCKED CONTENT (from hooks):
 
 			if (generatedTitle && !this._store.isDisposed) {
 				this.currentTitle = generatedTitle;
-				this.setFinalizedTitle(generatedTitle);
+				this.setFinalizedTitle(this.getElapsedTimeLabel());
 				this.content.generatedTitle = generatedTitle;
 				this.setGeneratedTitleOnAllParts(generatedTitle);
 				return;
@@ -1056,10 +1057,21 @@ ${this.hookCount > 0 ? `EXAMPLES WITH BLOCKED CONTENT (from hooks):
 		return true;
 	}
 
+	private getElapsedTimeLabel(): string {
+		const elapsedMs = Date.now() - this._startTime;
+		const elapsedSec = Math.round(elapsedMs / 1000);
+		if (elapsedSec < 60) {
+			return localize('chat.thinking.elapsed.seconds', 'Thought for {0}s', elapsedSec);
+		}
+		const min = Math.floor(elapsedSec / 60);
+		const sec = elapsedSec % 60;
+		return sec > 0
+			? localize('chat.thinking.elapsed.minutes', 'Thought for {0}m {1}s', min, sec)
+			: localize('chat.thinking.elapsed.minutesOnly', 'Thought for {0}m', min);
+	}
+
 	private setFallbackTitle(): void {
-		const finalLabel = this.appendedItemCount > 0
-			? localize('chat.thinking.finished.withSteps', 'Finished with {0} step{1}', this.appendedItemCount, this.appendedItemCount === 1 ? '' : 's')
-			: localize('chat.thinking.finished', 'Finished Working');
+		const finalLabel = this.getElapsedTimeLabel();
 
 		this.currentTitle = finalLabel;
 		// With lazy rendering, wrapper may not be created yet if content hasn't been expanded

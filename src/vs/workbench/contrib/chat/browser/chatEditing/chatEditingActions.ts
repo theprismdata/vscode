@@ -200,7 +200,7 @@ export class ChatEditingAcceptAllAction extends EditingSessionAction {
 	constructor() {
 		super({
 			id: 'chatEditing.acceptAllFiles',
-			title: localize('accept', 'Keep'),
+			title: localize('accept', 'Keep All'),
 			icon: Codicon.check,
 			tooltip: localize('acceptAllEdits', 'Keep All Edits'),
 			precondition: hasUndecidedChatEditingResourceContextKey,
@@ -210,11 +210,10 @@ export class ChatEditingAcceptAllAction extends EditingSessionAction {
 				weight: KeybindingWeight.WorkbenchContrib,
 			},
 			menu: [
-
 				{
 					id: MenuId.ChatEditingWidgetToolbar,
 					group: 'navigation',
-					order: 0,
+					order: 1,
 					when: ContextKeyExpr.and(applyingChatEditsFailedContextKey.negate(), ContextKeyExpr.and(hasUndecidedChatEditingResourceContextKey))
 				}
 			]
@@ -232,7 +231,7 @@ export class ChatEditingDiscardAllAction extends EditingSessionAction {
 	constructor() {
 		super({
 			id: 'chatEditing.discardAllFiles',
-			title: localize('discard', 'Undo'),
+			title: localize('discard', 'Undo All'),
 			icon: Codicon.discard,
 			tooltip: localize('discardAllEdits', 'Undo All Edits'),
 			precondition: hasUndecidedChatEditingResourceContextKey,
@@ -240,7 +239,7 @@ export class ChatEditingDiscardAllAction extends EditingSessionAction {
 				{
 					id: MenuId.ChatEditingWidgetToolbar,
 					group: 'navigation',
-					order: 1,
+					order: 0,
 					when: ContextKeyExpr.and(applyingChatEditsFailedContextKey.negate(), hasUndecidedChatEditingResourceContextKey)
 				}
 			],
@@ -315,7 +314,7 @@ export async function discardAllEditsWithConfirmation(accessor: ServicesAccessor
 
 export class ChatEditingShowChangesAction extends EditingSessionAction {
 	static readonly ID = 'chatEditing.viewChanges';
-	static readonly LABEL = localize('chatEditing.viewChanges', 'View All Edits');
+	static readonly LABEL = localize('chatEditing.viewChanges', 'Review');
 
 	constructor() {
 		super({

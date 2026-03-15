@@ -845,6 +845,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 
 .interactive-session .chat-input-toolbars > .chat-execute-toolbar {
 	order: 2;
+	margin-left: auto;
 }
 
 .interactive-input-part:has(.chat-editing-session > .chat-editing-session-container) .chat-input-container,
@@ -904,7 +905,8 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .interactive-session .chat-editing-session .chat-editing-session-container .chat-editing-session-overview {
 	display: flex;
 	flex-direction: row;
-	justify-content: space-between;
+	justify-content: flex-start;
+	align-items: center;
 	gap: 6px;
 	padding-right: 3px;
 	height: 22px;
@@ -919,6 +921,15 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	overflow: hidden;
 	text-overflow: ellipsis;
 	align-content: center;
+	flex-shrink: 0;
+}
+
+/* N Files 다음에 | 구분자 삽입 */
+.interactive-session .chat-editing-session .chat-editing-session-container .chat-editing-session-overview > .working-set-title::after {
+	content: '|';
+	margin: 0 6px;
+	opacity: 0.4;
+	font-size: 11px;
 }
 
 .interactive-session .chat-editing-session .chat-editing-session-container .chat-editing-session-overview > .working-set-title .working-set-count.file-limit-reached {
@@ -982,8 +993,13 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	display: flex;
 	flex-direction: row;
 	flex-wrap: nowrap;
-	gap: 6px;
+	gap: 4px;
 	align-items: center;
+}
+
+/* 라인 추가/삭제 카운트는 Cursor 스타일에서 숨김 */
+.interactive-session .chat-editing-session .chat-editing-session-container .chat-editing-session-overview .working-set-line-counts {
+	display: none;
 }
 
 .interactive-session .chat-editing-session .chat-editing-session-toolbar-actions {
@@ -1339,6 +1355,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 .interactive-session .chat-input-toolbars {
 	display: flex;
 	align-items: center;
+	justify-content: space-between;
 	gap: 6px;
 	margin-top: 4px;
 }
@@ -1424,7 +1441,7 @@ have to be updated for changes to the rules above, or to support more deeply nes
 }
 
 .interactive-session .chat-input-toolbars :not(.responsive.chat-input-toolbar) .actions-container:first-child {
-	margin-right: auto;
+	margin-right: 0;
 }
 
 .interactive-session .chat-input-toolbars > .chat-input-toolbar .actions-container:first-child {
@@ -1447,8 +1464,11 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	order: 0;
 	overflow: hidden;
 	min-width: 0px;
-	width: 100%;
+	width: auto;
+	flex-grow: 1;
 	color: var(--vscode-icon-foreground);
+	display: flex;
+	justify-content: flex-start;
 
 	.monaco-action-bar .action-item .codicon {
 		color: var(--vscode-icon-foreground);
@@ -1557,15 +1577,30 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	opacity: 0.75;
 }
 
+/* Agent | Model 통합 구분자 스타일 */
+.interactive-session .chat-input-toolbar .chat-mode-picker-item .action-label .chat-mode-model-separator {
+	margin-left: 5px;
+	opacity: 0.4;
+	font-size: 11px;
+	line-height: 1;
+}
+
+/* 모드 피커와 모델 피커 사이 간격 제거하여 통합된 느낌 */
+.interactive-session .chat-input-toolbar .chat-mode-picker-item {
+	margin-right: -2px;
+}
+
 .interactive-session .chat-input-toolbars .monaco-action-bar .actions-container,
 .interactive-session .chat-secondary-toolbar .monaco-action-bar .actions-container {
 	display: flex;
 	gap: 4px;
+	align-items: center;
 }
 
 .interactive-session .chat-input-toolbars .chat-sessionPicker-container {
 	display: flex;
 	max-width: 100%;
+	align-items: center;
 }
 
 .monaco-workbench .interactive-session .chat-input-toolbars .monaco-action-bar .action-item .codicon,

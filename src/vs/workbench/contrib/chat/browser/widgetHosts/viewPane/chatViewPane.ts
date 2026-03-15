@@ -100,6 +100,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	private readonly modelRef = this._register(new MutableDisposable<IChatModelReference>());
 
 	private readonly activityBadge = this._register(new MutableDisposable());
+	private readonly _sessionTitleDisposable = this._register(new MutableDisposable<DisposableStore>());
+	private _defaultPaneTitle: string = '';
 
 	constructor(
 		options: IViewPaneOptions,
@@ -145,6 +147,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		}
 		this.sessionsViewerVisible = false; // will be updated from layout code
 		this.sessionsViewerSidebarWidth = Math.max(ChatViewPane.SESSIONS_SIDEBAR_MIN_WIDTH, this.viewState.sessionsSidebarWidth ?? ChatViewPane.SESSIONS_SIDEBAR_DEFAULT_WIDTH);
+		this._defaultPaneTitle = options.title;
 
 		// Contextkeys
 		this.chatViewLocationContext = ChatContextKeys.panelLocation.bindTo(contextKeyService);
@@ -634,6 +637,28 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 				this.relayout();
 			}
 		}));
+
+		// 세션 모델 타이틀을 ViewPane 헤더에 동적으로 반영
+		const updateSessionTitle = () => {
+			this._sessionTitleDisposable.value = new DisposableStore();
+			const model = chatWidget.viewModel?.model;
+			if (model) {
+				const applyTitle = () => {
+					const sessionTitle = model.title;
+					this.updateTitle(sessionTitle || this._defaultPaneTitle);
+				};
+				applyTitle();
+				this._sessionTitleDisposable.value.add(model.onDidChange(e => {
+					if (e.kind === 'setCustomTitle' || e.kind === 'addRequest' || e.kind === 'addResponse') {
+						applyTitle();
+					}
+				}));
+			} else {
+				this.updateTitle(this._defaultPaneTitle);
+			}
+		};
+		this._register(chatWidget.onDidChangeViewModel(() => updateSessionTitle()));
+		updateSessionTitle();
 
 		// Show progress badge when the current session is in progress
 		const progressBadgeDisposables = this._register(new MutableDisposable<DisposableStore>());
