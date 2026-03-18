@@ -70,6 +70,10 @@ export class ImplicitContextAttachmentWidget extends Disposable {
 		this.renderedCount = 0;
 
 		for (const context of this.attachment.values) {
+			// Skip disabled contexts so clicking [x] actually hides the chip
+			if (!context.enabled) {
+				continue;
+			}
 			const targetUri: URI | undefined = context.uri;
 			const targetRange = isLocation(context.value) ? context.value.range : undefined;
 			const targetHandle = isStringImplicitContextValue(context.value) ? context.value.handle : undefined;

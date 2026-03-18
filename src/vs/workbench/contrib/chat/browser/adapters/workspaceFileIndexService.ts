@@ -116,7 +116,9 @@ export class WorkspaceFileIndexService extends Disposable implements IWorkspaceF
 			}
 		}
 
-		return undefined;
+		// If suffix matching didn't narrow it down, return the first candidate
+		// so the file path is still clickable (user can navigate from there)
+		return candidates[0];
 	}
 
 	// ─── Cache storage ──────────────────────────────────────────

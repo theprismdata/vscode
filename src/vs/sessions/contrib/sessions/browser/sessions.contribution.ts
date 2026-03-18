@@ -26,7 +26,7 @@ const agentSessionsViewContainer: ViewContainer = Registry.as<IViewContainersReg
 	icon: agentSessionsViewIcon,
 	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [SessionsContainerId, { mergeViewWithContainerWhenSingleView: true, }]),
 	storageId: SessionsContainerId,
-	hideIfEmpty: true,
+	hideIfEmpty: false,
 	order: 6,
 	windowVisibility: WindowVisibility.Sessions
 }, ViewContainerLocation.Sidebar, { isDefault: true });

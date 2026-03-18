@@ -741,7 +741,11 @@ export class Workbench extends Disposable implements IWorkbenchLayoutService {
 		for (const part of [titleBar, panelPart, sideBar, auxiliaryBarPart, chatBarPart]) {
 			this._register(part.onDidVisibilityChange(visible => {
 				if (part === sideBar) {
-					this.setSideBarHidden(!visible);
+					// Sidebar is always visible in sessions workbench — only
+					// propagate show events, never hide.
+					if (visible) {
+						this.setSideBarHidden(false);
+					}
 				} else if (part === panelPart) {
 					this.setPanelHidden(!visible);
 				} else if (part === auxiliaryBarPart) {
@@ -1029,6 +1033,11 @@ export class Workbench extends Disposable implements IWorkbenchLayoutService {
 	setPartHidden(hidden: boolean, part: Parts): void {
 		switch (part) {
 			case Parts.SIDEBAR_PART:
+				// In the sessions workbench the sidebar (session list) is
+				// always visible — ignore any attempt to hide it.
+				if (hidden) {
+					return;
+				}
 				this.setSideBarHidden(hidden);
 				break;
 			case Parts.AUXILIARYBAR_PART:
