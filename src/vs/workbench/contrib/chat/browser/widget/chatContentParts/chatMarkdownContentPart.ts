@@ -57,7 +57,10 @@ import { IChatCodeBlockInfo } from '../../chat.js';
 import { allowedChatMarkdownHtmlTags } from '../chatContentMarkdownRenderer.js';
 import { IMarkdownDiffBlockData, MarkdownDiffBlockPart, parseUnifiedDiff } from './chatDiffBlockPart.js';
 import { ChatEditingActionContext } from '../../chatEditing/chatEditingActions.js';
+import { IFilePathResolver } from '../../adapters/filePathResolver.js';
+import { autoLinkFilePaths } from './chatFilePathAutoLinker.js';
 import { ChatMarkdownDecorationsRenderer } from './chatMarkdownDecorationsRenderer.js';
+import { IChatMarkdownAnchorService } from './chatMarkdownAnchorService.js';
 import { CodeBlockPart, ICodeBlockData, ICodeBlockRenderOptions, localFileLanguageId, parseLocalFileData } from './codeBlockPart.js';
 import './media/chatCodeBlockPill.css';
 import { IDisposableReference } from './chatCollections.js';
@@ -121,6 +124,8 @@ export class ChatMarkdownContentPart extends Disposable implements IChatContentP
 		@ITextModelService private readonly textModelService: ITextModelService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IAiEditTelemetryService private readonly aiEditTelemetryService: IAiEditTelemetryService,
+		@IChatMarkdownAnchorService private readonly chatMarkdownAnchorService: IChatMarkdownAnchorService,
+		@IFilePathResolver private readonly filePathResolver: IFilePathResolver,
 	) {
 		super();
 
@@ -350,6 +355,9 @@ export class ChatMarkdownContentPart extends Disposable implements IChatContentP
 
 			const markdownDecorationsRenderer = instantiationService.createInstance(ChatMarkdownDecorationsRenderer);
 			store.add(markdownDecorationsRenderer.walkTreeAndAnnotateReferenceLinks(markdown, result.element));
+
+			// Auto-link file paths detected in the rendered markdown
+			autoLinkFilePaths(result.element, this.filePathResolver, this.instantiationService, this.chatMarkdownAnchorService, store);
 
 			const layoutParticipants = new Lazy(() => {
 				const observer = new ResizeObserver(() => this.mathLayoutParticipants.forEach(layout => layout()));

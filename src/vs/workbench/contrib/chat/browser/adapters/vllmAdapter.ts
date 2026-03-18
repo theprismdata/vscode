@@ -20,6 +20,7 @@ interface IVllmResponse {
 	choices: Array<{
 		message: {
 			content: string | null;
+			reasoning?: string | null;
 			tool_calls?: Array<{
 				id: string;
 				type: 'function';
@@ -28,6 +29,42 @@ interface IVllmResponse {
 		};
 		finish_reason: string;
 	}>;
+}
+
+/**
+ * Some models (e.g. CEN-35B) sometimes emit tool calls as XML in the
+ * `reasoning` or `content` field instead of using the `tool_calls` array.
+ * This function extracts them as a fallback.
+ */
+function parseToolCallsFromText(text: string): Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> {
+	const results: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = [];
+
+	// Match <tool_call>...<function=NAME>...<parameter=KEY>VALUE</parameter>...</function></tool_call>
+	// or JSON-style tool calls in reasoning
+	const toolCallRegex = /<tool_call>\s*<function=(\w+)>([\s\S]*?)<\/function>\s*<\/tool_call>/g;
+	let match;
+	while ((match = toolCallRegex.exec(text)) !== null) {
+		const funcName = match[1];
+		const body = match[2];
+		const params: Record<string, string> = {};
+
+		const paramRegex = /<parameter=(\w+)>\s*([\s\S]*?)\s*<\/parameter>/g;
+		let paramMatch;
+		while ((paramMatch = paramRegex.exec(body)) !== null) {
+			params[paramMatch[1]] = paramMatch[2].trim();
+		}
+
+		results.push({
+			id: `fallback-${Date.now()}-${results.length}`,
+			type: 'function',
+			function: {
+				name: funcName,
+				arguments: JSON.stringify(params),
+			},
+		});
+	}
+
+	return results;
 }
 
 function getChatCompletionsPath(endpointVersion: 'v1' | 'v3' | undefined): string {
@@ -64,6 +101,8 @@ export async function sendVllmChatRequest(
 		requestBody['tools'] = tools;
 	}
 
+	console.log(`[vLLM] POST ${url} — model: ${config.modelId}, messages: ${messages.length}, tools: ${tools?.length ?? 0}`);
+
 	const responseText = await requestService.request({
 		type: 'POST',
 		url,
@@ -76,10 +115,24 @@ export async function sendVllmChatRequest(
 		throw new Error('Empty response from vLLM endpoint');
 	}
 
+	console.log(`[vLLM] Raw response (first 500 chars):`, responseText.slice(0, 500));
+
 	const parsed = JSON.parse(responseText) as IVllmResponse;
 	const choice = parsed.choices?.[0];
 	const content = choice?.message?.content ?? '';
-	const toolCalls = choice?.message?.tool_calls;
+	const reasoning = choice?.message?.reasoning ?? '';
+	let toolCalls = choice?.message?.tool_calls;
+
+	// Fallback: some models emit tool calls as XML in reasoning/content instead of tool_calls
+	if ((!toolCalls || toolCalls.length === 0) && (reasoning || content)) {
+		const fallback = parseToolCallsFromText(reasoning + '\n' + content);
+		if (fallback.length > 0) {
+			toolCalls = fallback;
+			console.log(`[vLLM] Recovered ${fallback.length} tool call(s) from reasoning/content text`);
+		}
+	}
+
+	console.log(`[vLLM] Parsed — content length: ${content.length}, toolCalls: ${toolCalls?.length ?? 0}, finish_reason: ${choice?.finish_reason}`);
 
 	const parts: IChatResponsePart[] = [];
 
