@@ -26,7 +26,9 @@ import {
 import { ILanguageModelsConfigurationService, ILanguageModelsProviderGroup } from '../common/languageModelsConfiguration.js';
 import { sendOpenAIChatRequest, validateOpenAIConfiguration, estimateTokenCount, ICustomLMValidationResult, IOpenAITool } from './adapters/openAIAdapter.js';
 import { sendVllmChatRequest, validateVllmConfiguration } from './adapters/vllmAdapter.js';
-import { sendAnthropicChatRequest, validateAnthropicConfiguration, ANTHROPIC_BASE_URL } from './adapters/anthropicAdapter.js';
+import { sendAnthropicChatRequest, validateAnthropicConfiguration, ANTHROPIC_BASE_URL, IAnthropicTool } from './adapters/anthropicAdapter.js';
+import { IWorkspaceFileIndexService, WorkspaceFileIndexService } from './adapters/workspaceFileIndexService.js';
+import { IFilePathResolver, FilePathResolver } from './adapters/filePathResolver.js';
 
 // ---------------------------------------------------------------------------
 // Service interface for connection testing (used by chatModelsWidget)
@@ -60,7 +62,7 @@ const MY_PROVIDERS_CATEGORY = { label: MY_PROVIDERS_CATEGORY_LABEL, order: 2 };
  * Supported custom vendor identifiers.
  * These must be registered as vendor descriptors before any provider can be registered.
  */
-export const CUSTOM_VENDORS = ['openai', 'anthropic', 'vllm'] as const;
+export const CUSTOM_VENDORS = ['openai', 'anthropic', 'sonnet', 'vllm'] as const;
 type CustomVendor = (typeof CUSTOM_VENDORS)[number];
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,7 @@ type CustomVendor = (typeof CUSTOM_VENDORS)[number];
 const VENDOR_DEFAULT_BASE_URLS: Partial<Record<CustomVendor, string>> = {
 	openai: 'https://api.openai.com',
 	anthropic: ANTHROPIC_BASE_URL,
+	sonnet: ANTHROPIC_BASE_URL,
 };
 
 interface IResolvedModelConfig {
@@ -103,6 +106,7 @@ class CustomVendorProvider implements ILanguageModelChatProvider {
 		private readonly _vendor: CustomVendor,
 		private readonly _requestService: IRequestService,
 		private readonly _logService: ILogService,
+		private readonly _filePathResolver: IFilePathResolver | undefined,
 	) { }
 
 	async provideLanguageModelChatInfo(
@@ -205,13 +209,17 @@ class CustomVendorProvider implements ILanguageModelChatProvider {
 			);
 		}
 
-		if (config.vendor === 'anthropic') {
+		if (config.vendor === 'anthropic' || config.vendor === 'sonnet') {
+			const anthropicTools = options['anthropicTools'] as IAnthropicTool[] | undefined
+				?? (tools ? this._convertToAnthropicTools(tools) : undefined);
 			return sendAnthropicChatRequest(
 				config.apiKey,
 				config.modelName,
 				messages,
 				this._requestService,
 				token,
+				anthropicTools,
+				this._filePathResolver,
 			);
 		}
 
@@ -240,6 +248,15 @@ class CustomVendorProvider implements ILanguageModelChatProvider {
 			}
 		}
 		return total;
+	}
+
+	/** Converts OpenAI-format tools to Anthropic-format tools. */
+	private _convertToAnthropicTools(tools: IOpenAITool[]): IAnthropicTool[] {
+		return tools.map(t => ({
+			name: t.function.name,
+			description: t.function.description,
+			input_schema: t.function.parameters,
+		}));
 	}
 
 	/** Clears stale model configs and fires onDidChange so the service re-resolves models. */
@@ -279,6 +296,8 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 		@ILanguageModelsConfigurationService private readonly _languageModelsConfigurationService: ILanguageModelsConfigurationService,
 		@IRequestService private readonly _requestService: IRequestService,
 		@ILogService private readonly _logService: ILogService,
+		@IWorkspaceFileIndexService private readonly _fileIndexService: IWorkspaceFileIndexService,
+		@IFilePathResolver private readonly _filePathResolver: IFilePathResolver,
 	) {
 		super();
 		this._register(this._providerRegistrations);
@@ -289,6 +308,10 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 				changedGroups => this._onGroupsChanged(changedGroups)
 			)
 		);
+		// Initialize workspace file index in the background
+		this._fileIndexService.initialize().catch(err =>
+			this._logService.warn('[CustomLM] Failed to initialize workspace file index', err)
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -298,7 +321,7 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 	async testConnection(group: ILanguageModelsProviderGroup, token: CancellationToken): Promise<ICustomLMValidationResult> {
 		const apiKey = group.apiKey;
 
-		if (group.vendor === 'anthropic') {
+		if (group.vendor === 'anthropic' || group.vendor === 'sonnet') {
 			return validateAnthropicConfiguration(apiKey, this._requestService, token);
 		}
 
@@ -350,11 +373,12 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 		const vendorDescriptors = [
 			{ vendor: 'openai', displayName: 'OpenAI', configuration: managedVendorSchema },
 			{ vendor: 'anthropic', displayName: 'Anthropic', configuration: managedVendorSchema },
+			{ vendor: 'sonnet', displayName: 'Sonnet', configuration: managedVendorSchema },
 			{ vendor: 'vllm', displayName: 'vLLM', configuration: vllmVendorSchema },
 		] as unknown as IUserFriendlyLanguageModel[];
 
 		this._languageModelsService.deltaLanguageModelChatProviderDescriptors(vendorDescriptors, []);
-		this._logService.trace('[CustomLM] Registered vendor descriptors: openai, anthropic, vllm');
+		this._logService.trace('[CustomLM] Registered vendor descriptors: openai, anthropic, sonnet, vllm');
 	}
 
 	// -------------------------------------------------------------------------
@@ -364,7 +388,7 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 	private _registerVendorProviders(): void {
 		const allGroups = this._languageModelsConfigurationService.getLanguageModelsProviderGroups();
 		for (const vendor of CUSTOM_VENDORS) {
-			const provider = new CustomVendorProvider(vendor, this._requestService, this._logService);
+			const provider = new CustomVendorProvider(vendor, this._requestService, this._logService, this._filePathResolver);
 			this._providers.set(vendor, provider);
 			try {
 				const registration: IDisposable = this._languageModelsService.registerLanguageModelProvider(vendor, provider);
@@ -410,3 +434,5 @@ registerWorkbenchContribution2(
 );
 
 registerSingleton(ICustomLanguageModelProviderService, CustomLanguageModelProviderContribution, InstantiationType.Delayed);
+registerSingleton(IWorkspaceFileIndexService, WorkspaceFileIndexService, InstantiationType.Delayed);
+registerSingleton(IFilePathResolver, FilePathResolver, InstantiationType.Delayed);

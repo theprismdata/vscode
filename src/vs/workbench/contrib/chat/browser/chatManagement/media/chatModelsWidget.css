@@ -81,10 +81,6 @@
 
 /** Gutter column styling **/
 
-.models-widget .models-table-container .monaco-table-tr.models-model-row.model-hidden .models-table-column.models-gutter-column {
-	opacity: 1;
-}
-
 .models-widget .models-table-container .monaco-table-td .models-gutter-column .models-twistie {
 	align-self: stretch;
 }
@@ -131,10 +127,6 @@
 }
 
 /** Actions column styling **/
-
-.models-widget .models-table-container .monaco-list-row .monaco-table-tr.models-model-row.model-hidden .models-table-column.models-actions-column {
-	opacity: 1;
-}
 
 .models-widget .models-table-container .monaco-list-row .monaco-table-tr.models-model-row .models-table-column.models-actions-column .actions-container {
 	display: none;
@@ -216,12 +208,6 @@
 
 .models-widget .models-table-container .models-vendor-row .model-name {
 	font-weight: bold;
-}
-
-/** Model row styling **/
-
-.models-widget .models-table-container .monaco-table-tr.models-model-row.model-hidden .models-table-column {
-	opacity: 0.6;
 }
 
 /** Row alternating colors **/

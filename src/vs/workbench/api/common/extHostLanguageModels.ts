@@ -88,8 +88,11 @@ class LanguageModelResponse {
 
 			} else if (part.type === 'data') {
 				out = new extHostTypes.LanguageModelDataPart(part.data.buffer, part.mimeType, part.audience);
-			} else {
+			} else if (part.type === 'tool_use') {
 				out = new extHostTypes.LanguageModelToolCallPart(part.toolCallId, part.name, part.parameters);
+			} else {
+				// inlineReference parts are handled internally, skip for extension API
+				continue;
 			}
 			lmResponseParts.push(out);
 		}

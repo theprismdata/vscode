@@ -4,11 +4,10 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { CancellationToken } from '../../../../../../../base/common/cancellation.js';
-import { URI } from '../../../../../../../base/common/uri.js';
 import * as path from '../../../../../../../base/common/path.js';
 import { IFileService } from '../../../../../../../platform/files/common/files.js';
 import { IWorkspaceContextService } from '../../../../../../../platform/workspace/common/workspace.js';
-import { IShellExecService, IShellExecResult } from '../../../../../../../platform/shell/common/shellExec.js';
+import { IShellExecService } from '../../../../../../../platform/shell/common/shellExec.js';
 import { IToolData, IToolImpl, IToolInvocation, IToolResult, ToolDataSource, CountTokensCallback, ToolProgress } from '../../languageModelToolsService.js';
 
 // ---------------------------------------------------------------------------
@@ -49,7 +48,7 @@ export function toToolData(def: IIntelliCenToolDefinition): IToolData {
 		.filter(([_, v]) => v.required)
 		.map(([k]) => k);
 
-	const properties: Record<string, unknown> = {};
+	const properties: { [key: string]: import('../../../../../../../base/common/jsonSchema.js').IJSONSchema } = {};
 	for (const [key, val] of Object.entries(def.parameters)) {
 		const prop: Record<string, unknown> = { type: val.type, description: val.description };
 		if (val.items) {

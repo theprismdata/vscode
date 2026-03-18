@@ -374,18 +374,30 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 					workspacePath ? `4. To read "product.json", call intellicen_readFile with path="${workspacePath}/product.json"` : '',
 					'5. To list project files, call intellicen_listDirectory with path="."',
 					'6. To run shell commands, call intellicen_runTerminalCommand.',
+					'7. After collecting all necessary information via tools, you MUST provide a final text answer summarizing your findings. Never end with only tool calls — always conclude with a text response.',
 				].filter(Boolean).join('\n');
 				messages.push({ role: ChatMessageRole.System, content: [{ type: 'text', value: systemPrompt }] });
 
+				// Only include the most recent turns to avoid overflowing the context window.
+				const MAX_HISTORY_TURNS = 6;
+				// Assistant responses in history are capped to avoid re-injecting large tool outputs.
+				const MAX_HISTORY_RESPONSE_CHARS = 2_000;
+
 				const allRequests = widget?.viewModel?.model.getRequests() ?? [];
+				const pastRequests: typeof allRequests = [];
 				for (const req of allRequests) {
-					if (req === requestModel) {
-						break;
-					}
+					if (req === requestModel) { break; }
+					pastRequests.push(req);
+				}
+				const recentRequests = pastRequests.slice(-MAX_HISTORY_TURNS);
+				for (const req of recentRequests) {
 					messages.push({ role: ChatMessageRole.User, content: [{ type: 'text', value: req.message.text }] });
 					if (req.response) {
-						const responseText = req.response.response.getMarkdown();
+						let responseText = req.response.response.getMarkdown();
 						if (responseText) {
+							if (responseText.length > MAX_HISTORY_RESPONSE_CHARS) {
+								responseText = responseText.slice(0, MAX_HISTORY_RESPONSE_CHARS) + '\n[... truncated for context ...]';
+							}
 							messages.push({ role: ChatMessageRole.Assistant, content: [{ type: 'text', value: responseText }] });
 						}
 					}
@@ -403,6 +415,8 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 				console.log(`[CustomLM] Tools available: ${openAITools.length}`, openAITools.map(t => t.function.name));
 
 				const MAX_TOOL_ITERATIONS = 15;
+				let summaryRequested = false;
+				let hasStreamedText = false;
 				try {
 					for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
 						const requestOptions: { [name: string]: unknown } = {};
@@ -410,36 +424,85 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 							requestOptions['tools'] = openAITools;
 						}
 
-						const response = await languageModelsService.sendChatRequest(
-							request.userSelectedModelId,
-							undefined,
-							messages,
-							requestOptions,
-							CancellationToken.None
-						);
+					console.log(`[CustomLM][iter=${iteration}] Sending request — messages:`, messages.map(m => ({
+						role: m.role,
+						content: Array.isArray(m.content)
+							? m.content.map(c => ({ type: (c as { type: string }).type, preview: 'value' in c ? String((c as { value: unknown }).value).slice(0, 120) : '(no value)' }))
+							: String(m.content).slice(0, 120),
+					})));
 
-						const textParts: string[] = [];
-						const toolUseParts: Array<{ type: 'tool_use'; name: string; toolCallId: string; parameters: Record<string, unknown> }> = [];
+					const response = await languageModelsService.sendChatRequest(
+						request.userSelectedModelId,
+						undefined,
+						messages,
+						requestOptions,
+						CancellationToken.None
+					);
 
-						for await (const part of response.stream) {
-							const streamParts = Array.isArray(part) ? part : [part];
-							for (const p of streamParts) {
-								if (p.type === 'text' && p.value) {
-									textParts.push(p.value);
-								} else if (p.type === 'tool_use') {
-									toolUseParts.push(p);
+				const textParts: string[] = [];
+					const toolUseParts: Array<{ type: 'tool_use'; name: string; toolCallId: string; parameters: Record<string, unknown> }> = [];
+
+					// Tool calls cannot be streamed incrementally — we must buffer the full turn first.
+					// Text-only turns are streamed to the UI in real time.
+
+					for await (const part of response.stream) {
+						const streamParts = Array.isArray(part) ? part : [part];
+						for (const p of streamParts) {
+							console.log(`[CustomLM][iter=${iteration}] stream chunk:`, JSON.stringify(p).slice(0, 300));
+							if (p.type === 'text' && p.value) {
+								textParts.push(p.value);
+								// Stream text to UI immediately if no tool calls have arrived yet
+								if (toolUseParts.length === 0) {
+									progress({ kind: 'markdownContent', content: new MarkdownString(p.value) });
+									hasStreamedText = true;
 								}
+							} else if (p.type === 'inlineReference') {
+								// File path detected — emit as inline reference for InlineAnchorWidget rendering
+								if (toolUseParts.length === 0) {
+									progress({ kind: 'inlineReference', inlineReference: p.uri, name: p.name });
+									hasStreamedText = true;
+								}
+							} else if (p.type === 'tool_use') {
+								toolUseParts.push(p);
 							}
 						}
-						await response.result;
+					}
+					const resultValue = await response.result;
+					console.log(`[CustomLM][iter=${iteration}] stream ended. result=`, resultValue);
 
-						console.log(`[CustomLM] Iteration ${iteration}: textParts=${textParts.length}, toolUseParts=${toolUseParts.length}`, toolUseParts.map(t => t.name));
-						// No tool calls → output text and finish
-						if (toolUseParts.length === 0) {
+					console.log(`[CustomLM][iter=${iteration}] summary — textParts=${textParts.length}, toolUseParts=${toolUseParts.length}`, toolUseParts.map(t => t.name));
+
+					// No tool calls → text was already streamed (or there was none)
+					if (toolUseParts.length === 0) {
+						if (!hasStreamedText && textParts.length > 0) {
+							// Fallback: output buffered text that wasn't streamed
 							for (const text of textParts) {
 								progress({ kind: 'markdownContent', content: new MarkdownString(text) });
 							}
 							break;
+						}
+						if (hasStreamedText) {
+							break;
+						}
+						if (iteration > 0 && !summaryRequested) {
+							// Model finished tool calls but returned no text — request an explicit summary once
+							summaryRequested = true;
+							messages.push({
+								role: ChatMessageRole.User,
+								content: [{ type: 'text', value: 'Based on the information you gathered with the tools, please provide your answer now.' }],
+							});
+							continue;
+						}
+						break;
+					}
+
+						// Safety: if near MAX_TOOL_ITERATIONS, request a final summary on next iteration
+						if (iteration === MAX_TOOL_ITERATIONS - 2 && !summaryRequested) {
+							summaryRequested = true;
+							messages.push({
+								role: ChatMessageRole.User,
+								content: [{ type: 'text', value: 'You have used many tools. Please now provide your final answer based on everything you have gathered.' }],
+							});
 						}
 
 						// Add assistant message with tool_use to conversation
@@ -475,28 +538,36 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 								shimmer: true,
 							});
 
-							const countTokens: CountTokensCallback = async (input: string) => estimateTokenCount(input);
-							try {
-								const toolResult = await languageModelToolsService.invokeTool({
-									callId: toolUse.toolCallId,
-									toolId: toolUse.name,
-									parameters: toolUse.parameters,
-									context: undefined,
-								}, countTokens, CancellationToken.None);
+						const countTokens: CountTokensCallback = async (input: string) => estimateTokenCount(input);
+						try {
+							const toolResult = await languageModelToolsService.invokeTool({
+								callId: toolUse.toolCallId,
+								toolId: toolUse.name,
+								parameters: toolUse.parameters,
+								context: undefined,
+							}, countTokens, CancellationToken.None);
 
-								const resultText = toolResult.content
-									.map(c => c.kind === 'text' ? c.value : '')
-									.join('');
+							let resultText = toolResult.content
+								.map(c => c.kind === 'text' ? c.value : '')
+								.join('');
 
-								messages.push({
-									role: ChatMessageRole.User,
-									content: [{
-										type: 'tool_result',
-										toolCallId: toolUse.toolCallId,
-										value: [{ type: 'text', value: resultText || '(no output)' }],
-										isError: !!toolResult.toolResultError,
-									}],
-								});
+							// Cap tool results injected into the conversation to avoid
+							// overflowing the model context window across iterations.
+							const MAX_TOOL_RESULT_CHARS = 6_000;
+							if (resultText.length > MAX_TOOL_RESULT_CHARS) {
+								resultText = resultText.slice(0, MAX_TOOL_RESULT_CHARS)
+									+ `\n[... truncated — ${resultText.length - MAX_TOOL_RESULT_CHARS} chars omitted. Use offset/limit params to read specific sections.]`;
+							}
+
+							messages.push({
+								role: ChatMessageRole.User,
+								content: [{
+									type: 'tool_result',
+									toolCallId: toolUse.toolCallId,
+									value: [{ type: 'text', value: resultText || '(no output)' }],
+									isError: !!toolResult.toolResultError,
+								}],
+							});
 							} catch (toolErr) {
 								this.logService.error(`[CustomLM] Tool ${toolUse.name} failed`, toolErr);
 								messages.push({
@@ -510,15 +581,22 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 								});
 							}
 						}
-						// Loop continues → send tool results back to the model
-					}
-				} catch (err) {
-					this.logService.error('[CustomLM] Error invoking custom language model', err);
+					// Loop continues → send tool results back to the model
+				}
+				// If the loop completed without ever producing visible output, inform the user.
+				if (!hasStreamedText) {
 					progress({
 						kind: 'warning',
-						content: new MarkdownString(localize('customLMError', "Failed to get a response from the custom language model. Please check your provider settings."))
+						content: new MarkdownString(localize('customLMNoOutput', "The model did not return a response. The conversation context may be too large — try starting a new chat session.")),
 					});
 				}
+			} catch (err) {
+				this.logService.error('[CustomLM] Error invoking custom language model', err);
+				progress({
+					kind: 'warning',
+					content: new MarkdownString(localize('customLMError', "Failed to get a response from the custom language model. Please check your provider settings."))
+				});
+			}
 				return {};
 			}
 		}

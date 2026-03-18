@@ -316,7 +316,7 @@ export class ChatLanguageModelsDataContribution extends Disposable implements IW
 		const vendors = this.languageModelsService.getVendors();
 
 		// Cursor Style UI - Add custom vendors for menu-based registration
-		const customVendors = ['openai', 'anthropic', 'vllm'];
+		const customVendors = ['openai', 'anthropic', 'sonnet', 'vllm'];
 		const allVendorNames = Array.from(new Set([...vendors.map(v => v.vendor), ...customVendors]));
 
 		const customConfigurationSchema: IJSONSchema = {

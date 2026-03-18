@@ -26,10 +26,6 @@ export class NullLanguageModelsService implements ILanguageModelsService {
 	onDidChangeLanguageModelVendors = Event.None;
 	onDidChangeModelsControlManifest = Event.None;
 
-	updateModelPickerPreference(modelIdentifier: string, showInModelPicker: boolean): void {
-		return;
-	}
-
 	getVendors(): ILanguageModelProviderDescriptor[] {
 		return [];
 	}

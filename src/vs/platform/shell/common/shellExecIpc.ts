@@ -13,9 +13,9 @@ export class ShellExecChannel implements IServerChannel {
 		throw new Error('No events');
 	}
 
-	call(_context: unknown, command: string, args: unknown[]): Promise<unknown> {
+	call<T>(_context: unknown, command: string, args: unknown[]): Promise<T> {
 		switch (command) {
-			case 'exec': return this.service.exec(args[0] as string, args[1] as string | undefined);
+			case 'exec': return this.service.exec(args[0] as string, args[1] as string | undefined) as Promise<T>;
 		}
 		throw new Error(`Unknown command: ${command}`);
 	}
