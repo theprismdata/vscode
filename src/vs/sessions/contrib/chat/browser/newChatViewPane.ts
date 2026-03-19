@@ -51,6 +51,7 @@ import { IViewDescriptorService } from '../../../../workbench/common/views.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IWorkspaceTrustRequestService } from '../../../../platform/workspace/common/workspaceTrust.js';
 import { IViewPaneOptions, ViewPane } from '../../../../workbench/browser/parts/views/viewPane.js';
+import { IEditorService } from '../../../../workbench/services/editor/common/editorService.js';
 import { ContextMenuController } from '../../../../editor/contrib/contextmenu/browser/contextmenu.js';
 import { getSimpleEditorOptions } from '../../../../workbench/contrib/codeEditor/browser/simpleEditorOptions.js';
 import { NewChatContextAttachments } from './newChatContextAttachments.js';
@@ -73,6 +74,7 @@ import { ChatHistoryNavigator } from '../../../../workbench/contrib/chat/common/
 import { IHistoryNavigationWidget } from '../../../../base/browser/history.js';
 import { NewChatPermissionPicker } from './newChatPermissionPicker.js';
 import { registerAndCreateHistoryNavigationContext, IHistoryNavigationContext } from '../../../../platform/history/browser/contextScopedHistoryWidget.js';
+import { getImplicitSelectionContext } from './implicitSelectionContext.js';
 
 const STORAGE_KEY_DRAFT_STATE = 'sessions.draftState';
 const MIN_EDITOR_HEIGHT = 50;
@@ -192,6 +194,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 		@IGitService private readonly gitService: IGitService,
 		@IStorageService private readonly storageService: IStorageService,
 		@IWorkspaceTrustRequestService private readonly workspaceTrustRequestService: IWorkspaceTrustRequestService,
+		@IEditorService private readonly editorService: IEditorService,
 	) {
 		super();
 		this._history = this._register(this.instantiationService.createInstance(ChatHistoryNavigator, ChatAgentLocation.Chat));
@@ -222,6 +225,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 		this._register(this._branchPicker.onDidChangeLoading(loading => {
 			this._branchLoading = loading;
 			this._updateInputLoadingState();
+			this._updateSendButtonState();
 		}));
 
 		this._register(this._branchPicker.onDidChange((branch) => {
@@ -462,6 +466,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 
 		this._repositoryLoading = true;
 		this._updateInputLoadingState();
+		this._updateSendButtonState();
 		this._branchPicker.setRepository(undefined);
 		this._isolationModePicker.setRepository(undefined);
 		this._updateIsolationPickerVisibility();
@@ -474,6 +479,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 			}
 			this._repositoryLoading = false;
 			this._updateInputLoadingState();
+			this._updateSendButtonState();
 			this._isolationModePicker.setRepository(repository);
 			this._updateIsolationPickerVisibility();
 			this._branchPicker.setRepository(repository);
@@ -486,6 +492,7 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 			this.logService.warn(`Failed to open repository at ${folderUri.toString()}`, getErrorMessage(e));
 			this._repositoryLoading = false;
 			this._updateInputLoadingState();
+			this._updateSendButtonState();
 			this._isolationModePicker.setRepository(undefined);
 			this._updateIsolationPickerVisibility();
 			this._branchPicker.setRepository(undefined);
@@ -1019,13 +1026,14 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 			return;
 		}
 		const hasText = !!this._editor?.getModel()?.getValue().trim();
-		this._sendButton.enabled = !this._sending && hasText && !(this._newSession.value?.disabled ?? true);
+		const isLoading = this._repositoryLoading || this._branchLoading;
+		this._sendButton.enabled = !this._sending && !isLoading && hasText && !(this._newSession.value?.disabled ?? true);
 	}
 
 	private async _send(): Promise<void> {
 		let query = this._editor.getModel()?.getValue().trim();
 		const session = this._newSession.value;
-		if (!query || !session || this._sending) {
+		if (!query || !session || this._sending || this._repositoryLoading || this._branchLoading) {
 			return;
 		}
 
@@ -1050,9 +1058,8 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 		}
 
 		session.setQuery(query);
-		session.setAttachedContext(
-			this._contextAttachments.attachments.length > 0 ? [...this._contextAttachments.attachments] : undefined
-		);
+		const attachedContext = this._getAttachedContextForRequest();
+		session.setAttachedContext(attachedContext.length > 0 ? attachedContext : undefined);
 
 		if (this._draftState) {
 			this._history.append(this._draftState);
@@ -1084,6 +1091,15 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 		this._editor.updateOptions({ readOnly: false });
 		this._updateSendButtonState();
 		this._updateInputLoadingState();
+	}
+
+	private _getAttachedContextForRequest(): IChatRequestVariableEntry[] {
+		const attachedContext = [...this._contextAttachments.attachments];
+		const implicitSelection = getImplicitSelectionContext(this.editorService, attachedContext);
+		if (implicitSelection) {
+			attachedContext.push(implicitSelection);
+		}
+		return attachedContext;
 	}
 
 	/**

@@ -30,7 +30,8 @@ import { ChatModel, ChatRequestModel, IChatRequestModel, IChatRequestVariableDat
 import { ChatMode } from '../../common/chatModes.js';
 import { ChatRequestAgentPart, ChatRequestToolPart } from '../../common/requestParser/chatParserTypes.js';
 import { IChatProgress, IChatService } from '../../common/chatService/chatService.js';
-import { IChatRequestToolEntry } from '../../common/attachments/chatVariableEntries.js';
+import { IChatRequestToolEntry, IChatRequestVariableEntry, isStringImplicitContextValue } from '../../common/attachments/chatVariableEntries.js';
+import { isLocation } from '../../../../../editor/common/languages.js';
 import { ChatAgentLocation, ChatConfiguration, ChatModeKind } from '../../common/constants.js';
 import { ChatMessageRole, IChatMessage, ILanguageModelsService } from '../../common/languageModels.js';
 import { ILanguageModelsConfigurationService } from '../../common/languageModelsConfiguration.js';
@@ -402,7 +403,16 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 						}
 					}
 				}
-				messages.push({ role: ChatMessageRole.User, content: [{ type: 'text', value: request.message }] });
+				// Build user message with attached editor context (file selections, etc.)
+				const userMessageParts: string[] = [];
+
+				// Include attached context (e.g. editor selection) from request.variables
+				const attachedContextText = this._buildAttachedContextText(request.variables, workspacePath);
+				if (attachedContextText) {
+					userMessageParts.push(attachedContextText);
+				}
+				userMessageParts.push(request.message);
+				messages.push({ role: ChatMessageRole.User, content: [{ type: 'text', value: userMessageParts.join('\n\n') }] });
 
 				// Gather available tools — only include IntelliCen workspace tools
 				const availableTools = languageModelToolsService.getTools(modelMetadata);
@@ -610,6 +620,90 @@ export class SetupAgent extends Disposable implements IChatAgentImplementation {
 		await this.forwardRequestToChat(requestModel, progress, chatService, languageModelsService, chatAgentService, chatWidgetService, languageModelToolsService);
 
 		return {};
+	}
+
+	/**
+	 * Builds a text representation of attached editor context (file selections, etc.)
+	 * so that custom LM providers receive the context the user is referring to.
+	 */
+	private _buildAttachedContextText(variables: IChatRequestVariableData, workspacePath: string): string | undefined {
+		if (!variables.variables || variables.variables.length === 0) {
+			return undefined;
+		}
+
+		const contextParts: string[] = [];
+		for (const variable of variables.variables) {
+			const part = this._variableToContextText(variable, workspacePath);
+			if (part) {
+				contextParts.push(part);
+			}
+		}
+
+		if (contextParts.length === 0) {
+			return undefined;
+		}
+
+		return '[EDITOR CONTEXT]\n' + contextParts.join('\n\n');
+	}
+
+	private _variableToContextText(variable: IChatRequestVariableEntry, workspacePath: string): string | undefined {
+		const toRelative = (fsPath: string) =>
+			workspacePath && fsPath.startsWith(workspacePath)
+				? fsPath.slice(workspacePath.length + 1)
+				: fsPath;
+
+		// File attached with a specific line range (e.g. #selection or dragged range)
+		if (variable.kind === 'file' && isLocation(variable.value)) {
+			const { uri, range } = variable.value;
+			const rel = toRelative(uri.fsPath);
+			const header = (range && !(range.startLineNumber === range.endLineNumber && range.startColumn === range.endColumn))
+				? `File: ${rel} (lines ${range.startLineNumber}–${range.endLineNumber})`
+				: `File: ${rel}`;
+			const body = variable.modelDescription ? `\`\`\`\n${variable.modelDescription}\n\`\`\`` : '';
+			return [header, body].filter(Boolean).join('\n');
+		}
+
+		// File attached without a specific range (whole-file reference)
+		if (variable.kind === 'file' && URI.isUri(variable.value)) {
+			const rel = toRelative((variable.value as URI).fsPath);
+			const body = variable.modelDescription ? `\`\`\`\n${variable.modelDescription}\n\`\`\`` : '';
+			return [`File: ${rel}`, body].filter(Boolean).join('\n');
+		}
+
+		// Implicit active-editor context: StringChatContextValue (has .value text + .uri)
+		if (variable.kind === 'implicit' && isStringImplicitContextValue(variable.value)) {
+			const rel = toRelative(variable.value.uri.fsPath);
+			const displayName = variable.value.name ?? variable.name;
+			const header = `Active editor: ${rel}${displayName ? ` (${displayName})` : ''}`;
+			const body = variable.value.value ? `\`\`\`\n${variable.value.value}\n\`\`\`` : '';
+			return [header, body].filter(Boolean).join('\n');
+		}
+
+		// Implicit context: URI only (active file, no selection text)
+		if (variable.kind === 'implicit' && URI.isUri(variable.value)) {
+			return `Active editor: ${toRelative((variable.value as URI).fsPath)}`;
+		}
+
+		// Implicit context: Location (active file with selection range)
+		if (variable.kind === 'implicit' && isLocation(variable.value)) {
+			const { uri, range } = variable.value as { uri: URI; range: { startLineNumber: number; endLineNumber: number } };
+			const rel = toRelative(uri.fsPath);
+			const body = variable.modelDescription ? `\`\`\`\n${variable.modelDescription}\n\`\`\`` : '';
+			return [`Active editor: ${rel} (lines ${range.startLineNumber}–${range.endLineNumber})`, body].filter(Boolean).join('\n');
+		}
+
+		// Pasted code snippet
+		if (variable.kind === 'paste') {
+			const entry = variable as { kind: 'paste'; code: string; language: string; pastedLines: string };
+			return `Pasted code (${entry.language || 'unknown'}):\n\`\`\`${entry.language || ''}\n${entry.code}\n\`\`\``;
+		}
+
+		// Generic string variable (e.g. #selection resolved to text)
+		if (variable.kind === 'string' && typeof variable.value === 'string') {
+			return `Context (${variable.name}): ${variable.value}`;
+		}
+
+		return undefined;
 	}
 
 	private async forwardRequestToChat(requestModel: IChatRequestModel, progress: (part: IChatProgress) => void, chatService: IChatService, languageModelsService: ILanguageModelsService, chatAgentService: IChatAgentService, chatWidgetService: IChatWidgetService, languageModelToolsService: ILanguageModelToolsService): Promise<void> {

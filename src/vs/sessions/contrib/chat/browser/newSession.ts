@@ -110,10 +110,20 @@ export class LocalNewSession extends Disposable implements INewSession {
 	}
 
 	setRepoUri(uri: URI): void {
+		if (this._repoUri?.toString() === uri.toString()) {
+			return;
+		}
 		this._repoUri = uri;
-		this._isolationMode = 'workspace';
-		this._branch = undefined;
 		this._onDidChange.fire('repoUri');
+
+		// Reset branch selection when repository changes in worktree mode to avoid
+		// sending a stale branch from the previous repository.
+		if (this._isolationMode === 'worktree') {
+			this._branch = undefined;
+			this._onDidChange.fire('branch');
+			this.setOption(BRANCH_OPTION_ID, '');
+		}
+
 		this._onDidChange.fire('disabled');
 		this.setOption(REPOSITORY_OPTION_ID, uri.fsPath);
 	}
