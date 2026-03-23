@@ -33,6 +33,20 @@ async function ensureNodeModules() {
 }
 
 async function getElectron() {
+	// Skip download if the correct version is already present.
+	// The version file is written by @vscode/gulp-electron after a successful download.
+	const versionFile = path.join(rootDir, '.build', 'electron', 'version');
+	try {
+		const installedVersion = (await fs.readFile(versionFile, 'utf8')).trim();
+		// Read required version from .yarnrc / package.json via the build util
+		const { getElectronVersion } = await import('./util.ts');
+		const { electronVersion } = getElectronVersion();
+		if (installedVersion === electronVersion) {
+			return; // Already up-to-date — no network needed
+		}
+	} catch {
+		// version file missing or unreadable → fall through to download
+	}
 	await runProcess(npm, ['run', 'electron']);
 }
 
