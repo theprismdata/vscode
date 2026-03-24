@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Read(//c/Program Files/Microsoft Visual Studio/18//**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/2019/BuildTools/VC/Tools/MSVC//**)",
+      "Read(//dev/**)",
+      "Bash(npm_config_build_from_source=false npm install)",
+      "Read(//f/1.Developing/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/**)",
+      "Bash(npm rebuild:*)",
+      "Bash(NODE_OPTIONS=\"--experimental-strip-types\" npm rebuild)",
+      "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 NODE_OPTIONS=\"--experimental-strip-types\" npm rebuild)",
+      "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 NODE_OPTIONS=\"--experimental-strip-types\" npm run compile)",
+      "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 VSCODE_FORCE_INSTALL=1 NODE_OPTIONS=\"--experimental-strip-types\" node build/npm/postinstall.ts)"
+    ]
+  }
+}
