@@ -1,190 +1,142 @@
-# IntelliCen Studio — 오프라인 배포 가이드
+# IntelliCen Studio — 빌드 및 배포 가이드
 
 IntelliCen Studio는 VS Code(Code-OSS) 포크 기반의 AI 코딩 어시스턴트입니다.
 로컬 vLLM 서버와 연동하여 **완전 오프라인** 환경에서 동작합니다.
 
 ---
 
-## 구성 요소
+## 1. 빌드 환경 준비 (Windows)
 
-| 구성 요소 | 경로 | 역할 |
-|-----------|------|------|
-| Electron 앱 | `.build/electron/IntelliCen Studio.app` | 실행 바이너리 (macOS) |
-| 컴파일 결과 | `out/` | TypeScript → JS 빌드 결과 |
-| 의존성 | `node_modules/` | npm 패키지 전체 |
-| 빌트인 확장 | `.build/builtInExtensions/` | 내장 언어 확장 |
-| LLM 설정 파일 (개발 모드) | `~/Library/Application Support/code-oss-dev/User/chatLanguageModels.json` | 모델 공급자 설정 |
-| LLM 설정 파일 (패키징 앱) | `~/Library/Application Support/IntelliCen Studio/User/chatLanguageModels.json` | 모델 공급자 설정 |
+> 참고: https://github.com/microsoft/vscode/wiki/How-to-Contribute
 
----
+### 필수 도구
 
-## 1. 최초 1회: 인터넷 연결 상태에서 준비
+| 도구 | 버전 | 비고 |
+|------|------|------|
+| Node.js | **22.22.0 이상** (`.nvmrc` 참조) | https://nodejs.org/ |
+| Git | 최신 | https://git-scm.com/ |
+| Python | 3.x | `pip install setuptools` 필요 |
+| Visual Studio 2022 BuildTools | 17.x | 아래 winget 명령으로 설치 |
 
-> 이미 완료된 경우 건너뜁니다.
+### Visual Studio 2022 BuildTools 설치
 
-```bash
-# Node.js 22 이상 필요
-node --version   # v22.x.x 확인
+Spectre-mitigated 라이브러리를 포함해야 네이티브 모듈(node-pty, spdlog 등)이 빌드됩니다.
 
-# 의존성 설치 (인터넷 필요 — 최초 1회만)
-npm install
-
-# 빌트인 확장 다운로드 (최초 1회만)
-npm run download-builtin-extensions
-
-# TypeScript 컴파일 (이후에는 인터넷 불필요)
-npm run compile
+**x64 시스템:**
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget --override "--add Microsoft.VisualStudio.Component.Windows11SDK.22621 --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Microsoft.VisualStudio.Component.VC.ATL.Spectre --add Microsoft.VisualStudio.Component.VC.ATLMFC.Spectre"
 ```
 
----
-
-## 2. 개발 모드 실행
-
-### 온라인 환경 (최초 실행 또는 업데이트 시)
-
-```bash
-./scripts/code.sh
+**ARM64 시스템:**
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --source winget --override "--add Microsoft.VisualStudio.Component.Windows10SDK.20348 --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Runtimes.ARM64.Spectre --add Microsoft.VisualStudio.Component.VC.ATL.ARM64.Spectre --add Microsoft.VisualStudio.Component.VC.MFC.ARM64.Spectre"
 ```
 
-- `preLaunch.ts`가 실행되어 Electron 버전·빌트인 확장을 확인합니다.
-- Electron 버전이 일치하면 다운로드를 건너뜁니다 (수정된 동작).
-
-### 오프라인 환경 (빌드 완료 후 인터넷 없이 실행)
-
-```bash
-./scripts/code-offline.sh
-```
-
-- `VSCODE_SKIP_PRELAUNCH=1` — Electron 다운로드·확장 동기화 전체 건너뜀
-- `.build/electron/` 또는 `out/` 폴더가 없으면 오류 메시지 출력 후 종료
-
-자동 감시 빌드 (소스 수정 시 자동 컴파일):
-```bash
-# 별도 터미널에서 실행
-npm run watch
-
-# 앱은 별도 터미널에서 실행
-./scripts/code-offline.sh
-```
-
----
-
-## 3. 배포용 앱 패키징
-
-### macOS (.app)
-
-```bash
-npm run gulp vscode-darwin-arm64   # Apple Silicon
-npm run gulp vscode-darwin-x64     # Intel Mac
-```
-
-결과물: `../VSCode-darwin-arm64/IntelliCen Studio.app`  
-이 `.app` 파일 하나만 복사하면 다른 Mac에서 실행 가능합니다.
-
----
-
-### Windows (포터블 폴더 · EXE 인스톨러)
-
-> **반드시 Windows 머신에서 실행해야 합니다.**  
-> Electron 크로스 컴파일과 Inno Setup이 Windows 환경을 요구합니다.
-
-> **IntelliCen Studio는 Electron 데스크톱 앱입니다.**  
-> Node.js CLI 앱에 쓰는 `caxa` 방식의 단일 `.exe` 번들은 사용할 수 없습니다.  
-> Electron 앱은 런타임(Chromium + Node.js)을 포함한 폴더 또는 Inno Setup 인스톨러로 배포합니다.
-
-#### 1단계: Windows 머신에서 준비
+### Inno Setup 6 설치 (EXE 인스톨러 생성 시 필요)
 
 ```powershell
-# Node.js 22 이상, Git 설치 후
-git clone https://github.com/theprismdata/vscode.git
-cd vscode
-npm install
-npm run compile
-npm run download-builtin-extensions
+winget install --id JRSoftware.InnoSetup -e --source winget
 ```
 
-#### 2단계: 포터블 앱 폴더 생성
+---
+
+## 2. 소스 빌드
+
+```powershell
+git clone https://github.com/theprismdata/vscode.git
+cd vscode
+
+# 의존성 설치 (인터넷 필요)
+npm install
+
+# TypeScript 컴파일
+npm run compile
+```
+
+> `.npmrc`에 `msvs_version="2022"`가 설정되어 있어야 VS2022 BuildTools를 사용합니다.
+
+---
+
+## 3. 개발 모드 실행
+
+### Windows
+
+```powershell
+.\scripts\code.bat
+```
+
+### macOS / Linux
+
+```bash
+# 온라인 (Electron 다운로드 포함)
+./scripts/code.sh
+
+# 오프라인 (빌드 완료 후)
+./scripts/code-offline.sh
+```
+
+자동 감시 빌드 (소스 수정 시 자동 컴파일):
+```powershell
+# 터미널 1: 감시 빌드
+npm run watch
+
+# 터미널 2: 앱 실행
+.\scripts\code.bat
+```
+
+---
+
+## 4. 배포용 패키징
+
+### Windows — 포터블 앱 폴더
 
 ```powershell
 npm run gulp vscode-win32-x64       # Intel/AMD 64비트
 npm run gulp vscode-win32-arm64     # ARM64 (Surface 등)
 ```
 
-결과물: `..\VSCode-win32-x64\` 폴더 (~300MB)  
-이 폴더째로 배포하거나 ZIP으로 압축하면 **포터블 앱**으로 사용 가능합니다.  
-Node.js 설치 불필요 — Electron 런타임이 내장되어 있습니다.
+결과물: `..\VSCode-win32-x64\` 폴더
+이 폴더째로 배포하거나 ZIP으로 압축하면 **포터블 앱**으로 사용 가능합니다.
 
-#### 3단계: EXE 인스톨러 생성 (선택)
-
-[Inno Setup 6](https://jrsoftware.org/isinfo.php)을 설치한 후:
+### Windows — EXE 인스톨러
 
 ```powershell
-# x64 시스템 설치용
-iscc /dNameLong="IntelliCen Studio" `
-     /dNameShort="IntelliCen Studio" `
-     /dVersion="1.112.0" `
-     /dRawVersion="1.112.0" `
-     /dNameVersion="IntelliCen Studio 1.112.0" `
-     /dSourceDir="..\VSCode-win32-x64" `
-     /dRepoDir="." `
-     /dOutputDir="..\installer-output" `
-     /dInstallTarget="system" `
-     "/dAppId={{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}" `
-     /dDirName="IntelliCen Studio" `
-     /dExeBasename="intellicen-studio" `
-     /dArchitecturesAllowed="x64compatible" `
-     /dArchitecturesInstallIn64BitMode="x64compatible" `
-     build\win32\code.iss
-
-# ARM64 시스템 설치용
-iscc /dNameLong="IntelliCen Studio" `
-     /dNameShort="IntelliCen Studio" `
-     /dVersion="1.112.0" `
-     /dRawVersion="1.112.0" `
-     /dNameVersion="IntelliCen Studio 1.112.0" `
-     /dSourceDir="..\VSCode-win32-arm64" `
-     /dRepoDir="." `
-     /dOutputDir="..\installer-output" `
-     /dInstallTarget="system" `
-     "/dAppId={{D1ACE434-89C5-48D1-88D3-E2991DF85475}" `
-     /dDirName="IntelliCen Studio" `
-     /dExeBasename="intellicen-studio" `
-     /dArchitecturesAllowed="arm64" `
-     /dArchitecturesInstallIn64BitMode="arm64" `
-     build\win32\code.iss
+npm run gulp vscode-win32-x64-system-setup    # x64 시스템 설치용
+npm run gulp vscode-win32-x64-user-setup      # x64 사용자 설치용
+npm run gulp vscode-win32-arm64-system-setup  # ARM64 시스템 설치용
+npm run gulp vscode-win32-arm64-user-setup    # ARM64 사용자 설치용
 ```
 
-결과물: `..\installer-output\VSCodeSetup.exe` — 더블클릭 설치 가능한 인스톨러
+결과물: `.build\win32-x64\system-setup\VSCodeSetup.exe` (~151MB)
 
-> **MSI 형식은 지원하지 않습니다.** VS Code 빌드 시스템은 Inno Setup `.exe`만 지원합니다.
+> gulp이 Inno Setup을 자동으로 호출합니다. 수동으로 `iscc` 명령을 실행할 필요 없습니다.
+
+### macOS — .app
+
+```bash
+npm run gulp vscode-darwin-arm64   # Apple Silicon
+npm run gulp vscode-darwin-x64     # Intel Mac
+```
+
+결과물: `../VSCode-darwin-arm64/IntelliCen Studio.app`
+
+> **패키징된 앱은 Node.js 설치 불필요** — Electron 런타임이 내장되어 있습니다.
+> 오프라인 환경에 복사하면 바로 실행됩니다.
 
 ---
 
-### 참고: local-code-rag (`cen.exe`) 방식과의 차이
+## 5. LLM 모델 설정
 
-`local-code-rag` 프로젝트의 `cen.exe`는 **caxa**로 만든 단일 파일 CLI 실행 파일입니다.
-
-| 항목 | local-code-rag (CLI) | IntelliCen Studio (데스크톱) |
-|------|---------------------|----------------------------|
-| 앱 타입 | Node.js CLI | Electron 데스크톱 앱 |
-| 런타임 번들러 | caxa (Node.js 내장) | Electron 내장 |
-| Windows 배포 | 단일 `.exe` 파일 | 폴더 또는 Inno Setup EXE |
-| caxa 적용 가능 | 가능 | 불가 |
-
----
-
-## 4. LLM 모델 설정 (오프라인 vLLM 연동)
-
-앱 실행 후 챗 입력창의 모델 선택 버튼으로 설정하거나,
-직접 파일을 편집합니다.
+앱 실행 후 챗 입력창의 모델 선택 버튼으로 설정하거나, 직접 파일을 편집합니다.
 
 **설정 파일 위치:**
 
 | 실행 방식 | 경로 |
 |----------|------|
-| 개발 모드 (`code.sh` / `code-offline.sh`) | `~/Library/Application Support/code-oss-dev/User/chatLanguageModels.json` |
-| 패키징 `.app` 실행 | `~/Library/Application Support/IntelliCen Studio/User/chatLanguageModels.json` |
-| Windows 패키징 | `%APPDATA%\IntelliCen Studio\User\chatLanguageModels.json` |
+| 개발 모드 (Windows) | `%APPDATA%\code-oss-dev\User\chatLanguageModels.json` |
+| 개발 모드 (macOS) | `~/Library/Application Support/code-oss-dev/User/chatLanguageModels.json` |
+| 패키징 앱 (Windows) | `%APPDATA%\IntelliCen Studio\User\chatLanguageModels.json` |
+| 패키징 앱 (macOS) | `~/Library/Application Support/IntelliCen Studio/User/chatLanguageModels.json` |
 
 **설정 예시:**
 ```json
@@ -222,65 +174,48 @@ iscc /dNameLong="IntelliCen Studio" `
 ]
 ```
 
-> API 키는 앱 UI에서 입력하면 시크릿 스토어에 저장되며,  
+> API 키는 앱 UI에서 입력하면 시크릿 스토어에 저장되며,
 > 설정 파일에는 `"${input:chat.lm.secret.xxxxx}"` 형태로 참조됩니다.
 
 ---
 
-## 5. 완전 오프라인 배포 체크리스트
+## 6. 오프라인 배포 체크리스트
 
-### 방법 A: 소스 빌드 배포 (개발자용)
+### 방법 A: EXE 인스톨러 배포 (권장)
 
-오프라인 환경의 다른 머신에 소스째로 배포:
+1. 온라인 환경에서 빌드:
+   ```powershell
+   npm install
+   npm run compile
+   npm run gulp vscode-win32-x64-system-setup
+   ```
+2. `.build\win32-x64\system-setup\VSCodeSetup.exe`를 오프라인 머신에 복사
+3. 더블클릭으로 설치 (Node.js 불필요)
+4. `chatLanguageModels.json` 설정 + 로컬 vLLM 서버 실행
 
-- [ ] 온라인 환경에서 아래를 완료한 후 폴더 전체 복사
-  ```bash
-  npm install                          # node_modules/ 생성
-  npm run compile                      # out/ 생성
-  npm run download-builtin-extensions  # .build/builtInExtensions/ 생성
-  npm run electron                     # .build/electron/ 생성
-  ```
-- [ ] Node.js 22 이상 설치 (타겟 머신)
-- [ ] `./scripts/code-offline.sh` 로 실행 (인터넷 불필요)
-- [ ] 로컬 vLLM 서버 실행 중 + `chatLanguageModels.json` 설정
+### 방법 B: 포터블 폴더 배포
 
-### 방법 B: 패키징 배포 (배포용, 권장)
+1. 온라인 환경에서 빌드:
+   ```powershell
+   npm install
+   npm run compile
+   npm run gulp vscode-win32-x64
+   ```
+2. `..\VSCode-win32-x64\` 폴더를 ZIP 압축 후 오프라인 머신에 복사
+3. 압축 해제 후 `IntelliCen Studio.exe` 실행 (Node.js 불필요)
+4. `chatLanguageModels.json` 설정 + 로컬 vLLM 서버 실행
 
-**macOS:**
-```bash
-npm run gulp vscode-darwin-arm64   # Apple Silicon
-# npm run gulp vscode-darwin-x64  # Intel Mac
-```
-- [ ] `../VSCode-darwin-arm64/IntelliCen Studio.app` 복사
-- [ ] 로컬 vLLM 서버 실행 중 + `chatLanguageModels.json` 설정
+### 방법 C: 소스 빌드 배포 (개발자용)
 
-**Windows (Windows 머신에서 빌드):**
-```powershell
-npm run gulp vscode-win32-x64
-# 결과: ..\VSCode-win32-x64\ 폴더 → ZIP 압축 후 배포
-# EXE 인스톨러 원할 경우: Inno Setup으로 code.iss 컴파일
-```
-- [ ] `VSCode-win32-x64\` 폴더 또는 EXE 인스톨러 배포
-- [ ] 로컬 vLLM 서버 실행 중 + `chatLanguageModels.json` 설정
-
-> **패키징된 앱은 Node.js 불필요** — Electron이 내장되어 있습니다.
-
----
-
-## 6. 빌드 결과물 폴더 설명
-
-```
-vscode/
-├── out/                        # 컴파일된 JS (npm run compile 결과)
-├── .build/
-│   ├── electron/               # Electron 바이너리 (.app / .exe)
-│   └── builtInExtensions/      # 내장 언어 확장
-├── node_modules/               # npm 의존성
-├── extensions/                 # VS Code 기본 확장 소스
-└── scripts/
-    ├── code.sh                 # 개발 모드 실행 (버전 체크 포함)
-    └── code-offline.sh         # 오프라인 실행 (preLaunch 전체 건너뜀)
-```
+1. 온라인 환경에서 완료 후 폴더 전체 복사:
+   ```powershell
+   npm install
+   npm run compile
+   npm run electron          # .build/electron/ 생성
+   ```
+2. 대상 머신에 Node.js 22.22.0 이상 설치
+3. `.\scripts\code.bat`으로 실행
+4. `chatLanguageModels.json` 설정 + 로컬 vLLM 서버 실행
 
 ---
 
@@ -288,8 +223,10 @@ vscode/
 
 | 증상 | 해결 방법 |
 |------|----------|
+| `npm install` 시 MSB8040 Spectre 오류 | VS2022 BuildTools + Spectre 컴포넌트 설치 (섹션 1 참조) |
+| `npm install` 시 ENOTEMPTY 오류 | `rmdir /s /q node_modules` 후 재실행 |
+| `npm install` 시 Node.js 버전 오류 | `.nvmrc` 확인 후 해당 버전 설치 (현재 22.22.0) |
 | 앱 실행 시 빈 화면 | `npm run compile` 재실행 후 재시작 |
 | 챗 모델 없음 | `chatLanguageModels.json` 설정 확인 |
 | 툴 실행 오류 | 워크스페이스 폴더가 열려 있는지 확인 |
-| Electron 버전 오류 | `node node_modules/.bin/electron --version` 확인 (v22 필요) |
-| 컴파일 오류 | `node --version` 확인 (v22 이상 필요) |
+| 인스톨러 빌드 실패 | Inno Setup 6 설치 여부 확인 |

@@ -13,7 +13,25 @@
       "Bash(NODE_OPTIONS=\"--experimental-strip-types\" npm rebuild)",
       "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 NODE_OPTIONS=\"--experimental-strip-types\" npm rebuild)",
       "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 NODE_OPTIONS=\"--experimental-strip-types\" npm run compile)",
-      "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 VSCODE_FORCE_INSTALL=1 NODE_OPTIONS=\"--experimental-strip-types\" node build/npm/postinstall.ts)"
+      "Bash(VSCODE_SKIP_NODE_VERSION_CHECK=1 VSCODE_FORCE_INSTALL=1 NODE_OPTIONS=\"--experimental-strip-types\" node build/npm/postinstall.ts)",
+      "Read(//c/Program Files \\(x86\\)/Inno Setup 6/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(ls \"/c/Program Files \\(x86\\)/Inno Setup 6/\")",
+      "Bash(reg query:*)",
+      "Read(//c/Users/prismdata/AppData/Local/Programs/Inno Setup 6//**)",
+      "Bash(mkdir -p f:/1.Developing/installer-output)",
+      "Bash(\"/c/Program Files/Inno Setup 6/ISCC.exe\" //dNameLong=\"IntelliCen Studio\" //dNameShort=\"IntelliCen Studio\" //dVersion=\"1.112.0\" //dRawVersion=\"1.112.0\" //dNameVersion=\"IntelliCen Studio 1.112.0\" //dSourceDir=\"F:\\\\1.Developing\\\\VSCode-win32-x64\" //dRepoDir=\"F:\\\\1.Developing\\\\vscode\" //dOutputDir=\"F:\\\\1.Developing\\\\installer-output\" //dInstallTarget=\"system\" \"//dAppId={{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}\" //dDirName=\"IntelliCen Studio\" //dExeBasename=\"intellicen-studio\" //dArchitecturesAllowed=\"x64compatible\" //dArchitecturesInstallIn64BitMode=\"x64compatible\" \"F:\\\\1.Developing\\\\vscode\\\\build\\\\win32\\\\code.iss\")",
+      "Bash(powershell -Command \"Get-ChildItem ''C:\\\\Program Files\\\\Inno Setup*'' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }; Get-ChildItem ''C:\\\\Program Files \\(x86\\)\\\\Inno Setup*'' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }\")",
+      "Bash(powershell -Command \"Get-ItemProperty ''HKLM:\\\\SOFTWARE\\\\WOW6432Node\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\*'',''HKLM:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\*'',''HKCU:\\\\SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\*'' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like ''*Inno*'' } | Select-Object DisplayName,InstallLocation\")",
+      "Bash(ISCC=\"/c/Users/prismdata/AppData/Local/Programs/Inno Setup 6/ISCC.exe\" \"$ISCC\" /?)",
+      "Bash(ISCC=\"/c/Users/prismdata/AppData/Local/Programs/Inno Setup 6/ISCC.exe\")",
+      "Bash(\"$ISCC\" /dNameLong=\"IntelliCen Studio\" /dNameShort=\"IntelliCen Studio\" /dVersion=\"1.112.0\" /dRawVersion=\"1.112.0\" /dNameVersion=\"IntelliCen Studio 1.112.0\" /dSourceDir=\"F:\\\\1.Developing\\\\VSCode-win32-x64\" /dRepoDir=\"F:\\\\1.Developing\\\\vscode\" /dOutputDir=\"F:\\\\1.Developing\\\\installer-output\" /dInstallTarget=\"system\" \"/dAppId={{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}\" /dDirName=\"IntelliCen Studio\" /dExeBasename=\"intellicen-studio\" /dArchitecturesAllowed=\"x64compatible\" /dArchitecturesInstallIn64BitMode=\"x64compatible\" \"F:\\\\1.Developing\\\\vscode\\\\build\\\\win32\\\\code.iss\")",
+      "Bash(\"$ISCC\" /dNameLong=\"IntelliCen Studio\" /dNameShort=\"IntelliCen Studio\" /dVersion=\"1.112.0\" /dRawVersion=\"1.112.0\" \"/dNameVersion=IntelliCen Studio 1.112.0\" \"/dSourceDir=F:\\\\1.Developing\\\\VSCode-win32-x64\" \"/dRepoDir=F:\\\\1.Developing\\\\vscode\" \"/dOutputDir=F:\\\\1.Developing\\\\installer-output\" /dInstallTarget=\"system\" '/dAppId={{D77B7E06-80BA-4137-BCF4-654B95CCEBC5}' \"/dDirName=IntelliCen Studio\" /dExeBasename=\"intellicen-studio\" /dArchitecturesAllowed=\"x64compatible\" /dArchitecturesInstallIn64BitMode=\"x64compatible\" \"F:\\\\1.Developing\\\\vscode\\\\build\\\\win32\\\\code.iss\")",
+      "Bash(cmd //c \"F:\\\\1.Developing\\\\vscode\\\\build_installer.bat\")",
+      "Bash(node -e \"const p = require\\(''f:/1.Developing/VSCode-win32-x64/resources/app/product.json''\\); console.log\\(JSON.stringify\\({tunnelAppName: p.tunnelApplicationName, regValueName: p.win32RegValueName || p.applicationName, appUserId: p.win32AppUserModelId, nameShort: p.nameShort, nameLong: p.nameLong, quality: p.quality}, null, 2\\)\\)\")"
+    ],
+    "additionalDirectories": [
+      "f:\\1.Developing\\VSCode-win32-x64"
     ]
   }
 }
