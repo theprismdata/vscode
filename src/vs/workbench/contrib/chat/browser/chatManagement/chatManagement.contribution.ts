@@ -197,7 +197,7 @@ class ChatManagementActionsContribution extends Disposable implements IWorkbench
 		MenuRegistry.appendMenuItem(MenuId.EditorTitle, {
 			command: {
 				id: MANAGE_CHAT_COMMAND_ID,
-				title: localize2('openAiManagement', "모델 설정..."),
+				title: localize2('openAiManagement', "Manage Language Models"),
 				icon: languageModelsOpenSettingsIcon
 			},
 			when: openModelsManagementEditorWhen,
