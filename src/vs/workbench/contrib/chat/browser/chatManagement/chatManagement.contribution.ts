@@ -130,6 +130,11 @@ class ChatManagementActionsContribution extends Disposable implements IWorkbench
 					category: CHAT_CATEGORY,
 					precondition: LANGUAGE_MODELS_ENTITLEMENT_PRECONDITION,
 					f1: true,
+					menu: [{
+						id: MenuId.MenubarPreferencesMenu,
+						group: '2_configuration',
+						order: 10
+					}]
 				});
 			}
 			async run(accessor: ServicesAccessor, args: string | IOpenManageCopilotEditorActionOptions) {
@@ -192,7 +197,7 @@ class ChatManagementActionsContribution extends Disposable implements IWorkbench
 		MenuRegistry.appendMenuItem(MenuId.EditorTitle, {
 			command: {
 				id: MANAGE_CHAT_COMMAND_ID,
-				title: localize2('openAiManagement', "Manage Language Models"),
+				title: localize2('openAiManagement', "모델 설정..."),
 				icon: languageModelsOpenSettingsIcon
 			},
 			when: openModelsManagementEditorWhen,

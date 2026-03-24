@@ -9,18 +9,16 @@ import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { IStringDictionary } from '../../../../base/common/collections.js';
 import { CancellationError, getErrorMessage, isCancellationError } from '../../../../base/common/errors.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { hash } from '../../../../base/common/hash.js';
 import { Iterable } from '../../../../base/common/iterator.js';
 import { IJSONSchema, TypeFromJsonSchema } from '../../../../base/common/jsonSchema.js';
 import { DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { IObservable, observableValue } from '../../../../base/common/observable.js';
 import { equals } from '../../../../base/common/objects.js';
 import Severity from '../../../../base/common/severity.js';
-import { format, isFalsyOrWhitespace } from '../../../../base/common/strings.js';
+import { isFalsyOrWhitespace } from '../../../../base/common/strings.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { isObject, isString } from '../../../../base/common/types.js';
 import { URI } from '../../../../base/common/uri.js';
-import { generateUuid } from '../../../../base/common/uuid.js';
 import { localize } from '../../../../nls.js';
 import { ContextKeyExpr, IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ExtensionIdentifier } from '../../../../platform/extensions/common/extensions.js';
@@ -517,8 +515,7 @@ interface IChatControlResponse {
 
 export class LanguageModelsService implements ILanguageModelsService {
 
-	private static SECRET_KEY_PREFIX = 'chat.lm.secret.';
-	private static SECRET_INPUT = '${input:{0}}';
+
 
 	readonly _serviceBrand: undefined;
 
@@ -1189,15 +1186,15 @@ export class LanguageModelsService implements ILanguageModelsService {
 		}
 	}
 
-	private encodeSecretKey(property: string): string {
-		return format(LanguageModelsService.SECRET_INPUT, property);
+	private isSecretReference(value: unknown): boolean {
+		return isString(value) && value.startsWith('${input:') && value.endsWith('}');
 	}
 
 	private decodeSecretKey(secretInput: unknown): string | undefined {
-		if (!isString(secretInput)) {
+		if (!this.isSecretReference(secretInput)) {
 			return undefined;
 		}
-		return secretInput.substring(secretInput.indexOf(':') + 1, secretInput.length - 1);
+		return (secretInput as string).substring((secretInput as string).indexOf(':') + 1, (secretInput as string).length - 1);
 	}
 
 	private _clearModelCache(vendor: string): Map<string, ILanguageModelChatMetadata> {
@@ -1223,8 +1220,11 @@ export class LanguageModelsService implements ILanguageModelsService {
 			}
 			let value = group[key];
 			if (schema.properties?.[key]?.secret) {
-				const secretKey = this.decodeSecretKey(value);
-				value = secretKey ? await this._secretStorageService.get(secretKey) : undefined;
+				if (this.isSecretReference(value)) {
+					const secretKey = this.decodeSecretKey(value);
+					value = secretKey ? await this._secretStorageService.get(secretKey) : undefined;
+				}
+				// else: plain text value — use as-is
 			}
 			result[key] = value;
 		}
@@ -1240,10 +1240,8 @@ export class LanguageModelsService implements ILanguageModelsService {
 		const result: IStringDictionary<unknown> = {};
 		for (const key in configuration) {
 			let value = configuration[key];
-			if (schema.properties?.[key]?.secret && isString(value)) {
-				const secretKey = `${LanguageModelsService.SECRET_KEY_PREFIX}${hash(generateUuid()).toString(16)}`;
-				await this._secretStorageService.set(secretKey, value);
-				value = this.encodeSecretKey(secretKey);
+			if (schema.properties?.[key]?.secret && isString(value) && this.isSecretReference(value)) {
+				// Already a secret reference — resolve and re-store (value unchanged)
 			}
 			result[key] = value;
 		}

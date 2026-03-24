@@ -13,7 +13,7 @@ import { IRequestService } from '../../../../platform/request/common/request.js'
 import { ExtensionIdentifier } from '../../../../platform/extensions/common/extensions.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
-import { IWorkbenchContribution, registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+import { IWorkbenchContribution } from '../../../common/contributions.js';
 import {
 	IChatMessage,
 	ILanguageModelChatMetadataAndIdentifier,
@@ -377,8 +377,12 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 			{ vendor: 'vllm', displayName: 'vLLM', configuration: vllmVendorSchema },
 		] as unknown as IUserFriendlyLanguageModel[];
 
-		this._languageModelsService.deltaLanguageModelChatProviderDescriptors(vendorDescriptors, []);
-		this._logService.trace('[CustomLM] Registered vendor descriptors: openai, anthropic, sonnet, vllm');
+		const registeredVendors = new Set(this._languageModelsService.getVendors().map(v => v.vendor));
+		const toAdd = vendorDescriptors.filter(v => !registeredVendors.has(v.vendor));
+		if (toAdd.length > 0) {
+			this._languageModelsService.deltaLanguageModelChatProviderDescriptors(toAdd, []);
+			this._logService.trace(`[CustomLM] Registered vendor descriptors: ${toAdd.map(v => v.vendor).join(', ')}`);
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -387,11 +391,16 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 
 	private _registerVendorProviders(): void {
 		const allGroups = this._languageModelsConfigurationService.getLanguageModelsProviderGroups();
+		const registeredVendors = new Set(this._languageModelsService.getVendors().map(v => v.vendor));
 		for (const vendor of CUSTOM_VENDORS) {
+			if (!registeredVendors.has(vendor)) {
+				this._logService.warn(`[CustomLM] Skipping provider registration for unknown vendor '${vendor}'`);
+				continue;
+			}
 			const provider = new CustomVendorProvider(vendor, this._requestService, this._logService, this._filePathResolver);
-			this._providers.set(vendor, provider);
 			try {
 				const registration: IDisposable = this._languageModelsService.registerLanguageModelProvider(vendor, provider);
+				this._providers.set(vendor, provider);
 				this._providerRegistrations.add(registration);
 				this._providerRegistrations.add(provider);
 				this._logService.trace(`[CustomLM] Registered provider for vendor '${vendor}'`);
@@ -404,7 +413,9 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 					provider.invalidate();
 				}
 			} catch (err) {
-				this._logService.error(`[CustomLM] Failed to register provider for vendor '${vendor}'`, err);
+				// Provider already registered by a prior instance (e.g. DI scope race) — safe to ignore
+				this._logService.trace(`[CustomLM] Provider for vendor '${vendor}' already registered, skipping`);
+				provider.dispose();
 			}
 		}
 	}
@@ -426,12 +437,6 @@ export class CustomLanguageModelProviderContribution extends Disposable implemen
 		}
 	}
 }
-
-registerWorkbenchContribution2(
-	CustomLanguageModelProviderContribution.ID,
-	CustomLanguageModelProviderContribution,
-	WorkbenchPhase.AfterRestored,
-);
 
 registerSingleton(ICustomLanguageModelProviderService, CustomLanguageModelProviderContribution, InstantiationType.Delayed);
 registerSingleton(IWorkspaceFileIndexService, WorkspaceFileIndexService, InstantiationType.Delayed);

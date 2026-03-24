@@ -293,9 +293,10 @@ export async function validateAnthropicConfiguration(
 	}
 
 	try {
+		console.log('[anthropic] apiKey:', apiKey ? `${apiKey.slice(0, 10)}... (len=${apiKey.length})` : 'undefined');
 		const ctx = await requestService.request({ type: 'GET', url, headers, timeout: 10000, callSite: 'anthropicAdapter.validate' }, token);
 		const statusCode = ctx.res.statusCode ?? 0;
-
+		console.log('statusCode', statusCode);
 		if (statusCode === 401 || statusCode === 403) {
 			return { ok: false, error: 'auth', message: `Authentication failed (HTTP ${statusCode})` };
 		}

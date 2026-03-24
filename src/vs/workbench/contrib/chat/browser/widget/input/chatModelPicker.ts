@@ -125,7 +125,7 @@ function createManageModelsAction(commandService: ICommandService): IActionWidge
 		checked: false,
 		class: ThemeIcon.asClassName(Codicon.gear),
 		tooltip: localize('chat.manageModels.tooltip', "Manage Language Models"),
-		label: localize('chat.manageModels', "Manage Models..."),
+		label: localize('chat.manageModels', "모델 관리..."),
 		run: () => { commandService.executeCommand(MANAGE_CHAT_COMMAND_ID); }
 	};
 }

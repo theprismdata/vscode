@@ -64,8 +64,8 @@ const stubManageModelsAction: IActionWidgetDropdownAction = {
 	enabled: true,
 	checked: false,
 	class: undefined,
-	tooltip: 'Manage Language Models',
-	label: 'Manage Models...',
+	tooltip: '모델 설정...(Manage Language Models)',
+	label: '모델 설정...(Manage Models...)',
 	run: () => { }
 };
 

@@ -709,6 +709,7 @@ class ActionsColumnRenderer extends ModelsTableColumnRenderer<IActionsColumnTemp
 						const cts = new CancellationTokenSource();
 						try {
 							const result = await this.customLMProviderService.testConnection(vendorEntry.group, cts.token);
+							console.log(vendorEntry.group)
 							if (result.ok) {
 								await this.dialogService.info(
 									localize('models.testConnection.success', "Connection successful"),
