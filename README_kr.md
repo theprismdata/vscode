@@ -95,7 +95,13 @@ npm run gulp vscode-win32-x64       # Intel/AMD 64비트
 npm run gulp vscode-win32-arm64     # ARM64 (Surface 등)
 ```
 
-결과물: `..\VSCode-win32-x64\` 폴더
+**결과물 위치:** 포터블 패키지는 **저장소 루트(`package.json`이 있는 폴더)의 부모 디렉터리** 아래에 만들어집니다. 폴더 이름은 항상 `VSCode-win32-x64`(또는 ARM64면 `VSCode-win32-arm64`)입니다.
+
+- 예: 클론이 `F:\1.Developing\vscode`이면 → `F:\1.Developing\VSCode-win32-x64\`
+- 예: 클론이 `D:\src\vscode`이면 → `D:\src\VSCode-win32-x64\`
+
+이 경로에 폴더가 없다면 `npm run gulp vscode-win32-x64`를 아직 끝까지 실행하지 않았거나, 빌드가 실패했거나, 생성 후 삭제한 경우입니다. 해당 gulp가 성공해야 이 폴더가 생깁니다.
+
 이 폴더째로 배포하거나 ZIP으로 압축하면 **포터블 앱**으로 사용 가능합니다.
 
 ### Windows — EXE 인스톨러
@@ -107,7 +113,16 @@ npm run gulp vscode-win32-arm64-system-setup  # ARM64 시스템 설치용
 npm run gulp vscode-win32-arm64-user-setup    # ARM64 사용자 설치용
 ```
 
-결과물: `.build\win32-x64\system-setup\VSCodeSetup.exe` (~151MB)
+**선행 조건:** 위 setup 작업 전에 같은 아키텍처로 `npm run gulp vscode-win32-x64`(또는 `vscode-win32-arm64`)를 한 번 실행해, **저장소 부모 폴더**에 `VSCode-win32-x64`(또는 `VSCode-win32-arm64`) 패키지 폴더가 있어야 Inno 빌드가 성공합니다.
+
+**결과물 위치** (저장소 루트 기준, `code.iss`의 `OutputBaseFilename`):
+
+| 실행한 태스크 | 폴더·파일 |
+|---------------|-----------|
+| `*-system-setup` | `.build\win32-x64\system-setup\VSCodeSetup.exe` (또는 `win32-arm64\...`) |
+| `*-user-setup` | `.build\win32-x64\user-setup\VSCodeSetup.exe` (또는 `win32-arm64\...`) |
+
+용량은 대략 150MB 전후입니다.
 
 > gulp이 Inno Setup을 자동으로 호출합니다. 수동으로 `iscc` 명령을 실행할 필요 없습니다.
 
@@ -201,7 +216,7 @@ npm run gulp vscode-darwin-x64     # Intel Mac
    npm run compile
    npm run gulp vscode-win32-x64
    ```
-2. `..\VSCode-win32-x64\` 폴더를 ZIP 압축 후 오프라인 머신에 복사
+2. 저장소 부모 폴더의 `VSCode-win32-x64\` 폴더를 ZIP 압축 후 오프라인 머신에 복사
 3. 압축 해제 후 `IntelliCen Studio.exe` 실행 (Node.js 불필요)
 4. `chatLanguageModels.json` 설정 + 로컬 vLLM 서버 실행
 
