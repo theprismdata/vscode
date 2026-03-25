@@ -132,12 +132,16 @@ export async function sendVllmChatRequest(
 		}
 	}
 
-	console.log(`[vLLM] Parsed — content length: ${content.length}, toolCalls: ${toolCalls?.length ?? 0}, finish_reason: ${choice?.finish_reason}`);
+	// Some models (e.g. CEN-35B) output reasoning-only with null content.
+	// In this case, use reasoning as the main text response.
+	const responseText2 = content || reasoning;
+
+	console.log(`[vLLM] Parsed — content length: ${content.length}, reasoning length: ${reasoning.length}, toolCalls: ${toolCalls?.length ?? 0}, finish_reason: ${choice?.finish_reason}`);
 
 	const parts: IChatResponsePart[] = [];
 
-	if (content) {
-		parts.push({ type: 'text', value: content });
+	if (responseText2) {
+		parts.push({ type: 'text', value: responseText2 });
 	}
 
 	if (toolCalls && toolCalls.length > 0) {
