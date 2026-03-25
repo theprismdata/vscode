@@ -30,6 +30,33 @@ import { IJSONSchema } from '../../../../base/common/jsonSchema.js';
 
 type LanguageModelsProviderGroups = Mutable<ILanguageModelsProviderGroup>[];
 
+/**
+ * chatLanguageModels.json이 존재하지 않을 때 자동 생성되는 기본 설정입니다.
+ * OpenAI와 Anthropic의 대표 모델을 미리 등록해 두며, API 키는 사용자가 직접 입력해야 합니다.
+ * 모델 목록은 최신 안정 릴리즈 기준으로 구성되어 있습니다.
+ */
+const DEFAULT_LANGUAGE_MODELS_CONFIGURATION: LanguageModelsProviderGroups = [
+	{
+		vendor: 'openai',
+		name: 'OpenAI',
+		models: ['gpt-4o', 'gpt-4o-mini', 'o3-mini'],
+	},
+	{
+		vendor: 'anthropic',
+		name: 'Anthropic',
+		models: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-3-5-haiku-latest'],
+	},
+	{
+		vendor: 'vllm',
+		name: 'vLLM',
+		baseUrl: 'http://10.10.41.160:8080',
+		apiKey: '1234',
+		models: ['CEN-35B'],
+		defaultModel: 'CEN-35B',
+		endpointVersion: 'v1',
+	},
+];
+
 export class LanguageModelsConfigurationService extends Disposable implements ILanguageModelsConfigurationService {
 
 	declare _serviceBrand: undefined;
@@ -188,7 +215,7 @@ export class LanguageModelsConfigurationService extends Disposable implements IL
 	private async withLanguageModelsProviderGroups(update?: (languageModelsProviderGroups: LanguageModelsProviderGroups) => Promise<LanguageModelsProviderGroups>): Promise<LanguageModelsProviderGroups> {
 		const exists = await this.fileService.exists(this.modelsConfigurationFile);
 		if (!exists) {
-			await this.fileService.writeFile(this.modelsConfigurationFile, VSBuffer.fromString(JSON.stringify([], undefined, '\t')));
+			await this.fileService.writeFile(this.modelsConfigurationFile, VSBuffer.fromString(JSON.stringify(DEFAULT_LANGUAGE_MODELS_CONFIGURATION, undefined, '\t')));
 		}
 		const ref = await this.textModelService.createModelReference(this.modelsConfigurationFile);
 		const model = ref.object.textEditorModel;
